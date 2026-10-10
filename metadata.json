@@ -1,0 +1,6 @@
+{
+  "name": "IIC Ambassador Management & Contribution Platform",
+  "description": "Centralized ambassador management, task distribution, punch-in time tracking, 4-hour weekly contribution monitoring, project participation, and digital CV platform for Industrial Innovation Centre (IIC) at Daffodil International University (DIU).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
