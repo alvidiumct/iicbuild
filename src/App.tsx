@@ -157,6 +157,7 @@ function MainApp() {
       case 'settings':
       case 'admin-settings':
         if (!isAuthenticated) return renderAuthRequired();
+        if (currentUser?.role !== 'ADMIN') return <AmbassadorDashboard />;
         return <AdminSettingsView />;
 
       default:

@@ -365,12 +365,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 onClick={() => handleNavClick('announcements')}
               />
 
-              <SidebarLink
-                icon={<Settings className="w-4 h-4" />}
-                label="Settings & Logo"
-                active={activeView === 'settings' || activeView === 'admin-settings'}
-                onClick={() => handleNavClick('settings')}
-              />
+              
             </>
           )}
         </div>
