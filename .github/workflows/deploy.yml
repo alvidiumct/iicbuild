@@ -30,6 +30,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Prepare static image paths
+        run: |
+          mkdir -p public/src/assets/images
+          cp -a src/assets/images/. public/src/assets/images/
+
       - name: Build production app
         run: npm run build
 
