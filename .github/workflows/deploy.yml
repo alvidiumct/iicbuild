@@ -60,12 +60,17 @@ jobs:
             'test -d /home/ambassador.iic.bd/public_html &&
              test -w /home/ambassador.iic.bd/public_html'
 
+     
       - name: Deploy production files
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          rsync -az \
+          rsync -rz \
+            --omit-dir-times \
+            --no-perms \
+            --no-owner \
+            --no-group \
             -e "ssh -i $HOME/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
             dist/ \
             "$DEPLOY_USER@$DEPLOY_HOST:/home/ambassador.iic.bd/public_html/"
