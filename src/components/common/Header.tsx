@@ -15,9 +15,11 @@ import {
   User,
   Sparkles,
   LogIn,
-  Server,
   Award,
+  UserPlus,
+  Settings,
 } from 'lucide-react';
+import { IICLogo } from './IICLogo';
 
 interface HeaderProps {
   onToggleSidebar?: () => void;
@@ -41,7 +43,6 @@ export const Header: React.FC<HeaderProps> = ({
     logout,
     isAuthenticated,
     setPublicVerifyCertificateId,
-    setIsVpsModalOpen,
   } = useApp();
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -89,12 +90,10 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={() => setActiveView('home')}
-            className="flex items-center gap-2.5 text-left focus:outline-hidden"
+            className="flex items-center gap-2.5 text-left focus:outline-hidden cursor-pointer"
             title="Go to Homepage"
           >
-            <div className="w-8 h-8 rounded bg-[#214FA2] text-white flex items-center justify-center font-bold text-sm tracking-tight shadow-xs">
-              IIC
-            </div>
+            <IICLogo size="sm" />
             <div className="flex flex-col">
               <span className="text-sm font-bold tracking-tight text-slate-900 leading-none">
                 IIC Ambassador Platform
@@ -198,29 +197,12 @@ export const Header: React.FC<HeaderProps> = ({
             >
               Verify Certificate
             </button>
-            <button
-              onClick={() => setIsVpsModalOpen(true)}
-              className="transition-colors hover:text-[#214FA2] flex items-center gap-1.5 text-slate-500"
-            >
-              <Server className="w-3.5 h-3.5 text-slate-400" />
-              <span>VPS Hosting</span>
-            </button>
           </nav>
         )}
 
         {/* Zone 3: Primary Actions & User Role Switcher */}
         {isAuthenticated ? (
           <div className="flex items-center gap-2 sm:gap-2.5">
-            {/* VPS Hosting Docs shortcut button */}
-            <button
-              onClick={() => setIsVpsModalOpen(true)}
-              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition-colors"
-              title="VPS Deployment Guide"
-            >
-              <Server className="w-3.5 h-3.5 text-slate-500" />
-              <span>VPS Guide</span>
-            </button>
-
             {/* Notifications */}
             <button
               onClick={onOpenNotifications}
@@ -301,17 +283,6 @@ export const Header: React.FC<HeaderProps> = ({
                       <span>Switch Role / Profile</span>
                     </button>
 
-                    <button
-                      onClick={() => {
-                        setIsUserMenuOpen(false);
-                        setIsVpsModalOpen(true);
-                      }}
-                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
-                    >
-                      <Server className="w-4 h-4 text-indigo-600" />
-                      <span>VPS Deployment Guide</span>
-                    </button>
-
                     {currentAmbassador && (
                       <button
                         onClick={() => {
@@ -324,6 +295,17 @@ export const Header: React.FC<HeaderProps> = ({
                         <span>View Public Verified CV</span>
                       </button>
                     )}
+
+                    <button
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        setActiveView('settings');
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
+                    >
+                      <Settings className="w-4 h-4 text-slate-500" />
+                      <span>Settings & IIC Logo</span>
+                    </button>
                   </div>
 
                   {/* Logout option in dropdown */}
@@ -339,6 +321,15 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Platform Settings shortcut */}
+            <button
+              onClick={() => setActiveView('settings')}
+              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              title="Platform & IIC Logo Settings"
+            >
+              <Settings className="w-4 h-4 text-slate-600" />
+            </button>
 
             {/* Edit Profile Quick Shortcut */}
             <button
@@ -374,20 +365,20 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         ) : (
           <div className="flex items-center gap-2 sm:gap-2.5">
-            {/* VPS Hosting Docs shortcut button */}
+            {/* Register as Ambassador shortcut */}
             <button
-              onClick={() => setIsVpsModalOpen(true)}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition-colors"
-              title="VPS Deployment Documentation"
+              onClick={() => setActiveView('register-ambassador')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#214FA2]/30 bg-blue-50/70 hover:bg-blue-100/70 text-[#214FA2] text-xs font-semibold transition-colors cursor-pointer"
             >
-              <Server className="w-3.5 h-3.5 text-slate-500" />
-              <span>VPS Guide</span>
+              <UserPlus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Register as Ambassador</span>
+              <span className="sm:hidden">Register</span>
             </button>
 
             {/* Certificate verification shortcut */}
             <button
               onClick={() => setPublicVerifyCertificateId('CERT-2026-001')}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors"
             >
               <Award className="w-3.5 h-3.5 text-amber-500" />
               <span>Verify Certificate</span>
@@ -396,7 +387,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Sign In button */}
             <button
               onClick={() => setActiveView('login')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#214FA2] hover:bg-[#1b4186] text-white text-xs font-semibold shadow-xs transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#214FA2] hover:bg-[#1b4186] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
             >
               <LogIn className="w-3.5 h-3.5" />
               <span>Portal Sign In</span>

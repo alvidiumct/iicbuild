@@ -136,16 +136,16 @@ export const MyAvailabilityView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-            <span>Availability Management</span>
+          <div className="flex items-center gap-2 text-xs font-semibold text-[#214FA2] mb-1 uppercase tracking-wider">
+            <span>Duty Schedules & Availability</span>
             <span aria-hidden="true">·</span>
-            <span>Weekly Roster Coordination</span>
+            <span>DIU Innovation Complex</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-            My Weekly Availability
+            Set Your Weekly Duty Schedule
           </h1>
           <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
-            Set your recurring available hours for task assignment, lab shifts, and team meetings
+            Configure your weekly available days and hours for lab duties, innovation projects, and admin shift assignments.
           </p>
         </div>
 

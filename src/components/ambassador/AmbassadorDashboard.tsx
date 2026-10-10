@@ -109,12 +109,37 @@ export const AmbassadorDashboard: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveView('availability')}
-            className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5"
+            className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
           >
-            <Calendar className="w-4 h-4" />
-            <span>Update Availability</span>
+            <Calendar className="w-4 h-4 text-[#214FA2]" />
+            <span>Set Duty Schedule</span>
           </button>
         </div>
+      </div>
+
+      {/* Duty Schedule Prompt Banner */}
+      <div className="bg-gradient-to-r from-blue-50 via-indigo-50/50 to-slate-50 border border-blue-200/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-[#214FA2] text-white flex items-center justify-center shrink-0 shadow-xs">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-xs font-bold text-slate-900">
+              Ambassador Weekly Duty & Lab Schedule
+            </h3>
+            <p className="text-[11px] text-slate-600 mt-0.5">
+              Set your available days and time slots so Centre Admins can schedule your shifts at the Ashulia Innovation Complex.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => setActiveView('availability')}
+          className="px-3 py-1.5 rounded-lg bg-[#214FA2] hover:bg-[#1a3f85] text-white text-xs font-semibold shadow-xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+        >
+          <span>Configure Schedule</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* HIGHEST PRIORITY: WEEKLY 4-HOUR CONTRIBUTION SCORECARD */}

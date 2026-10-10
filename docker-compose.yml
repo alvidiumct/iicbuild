@@ -1,9 +1,0 @@
-services:
-  iic-platform:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: diu-iic-platform
-    restart: always
-    ports:
-      - "80:80"

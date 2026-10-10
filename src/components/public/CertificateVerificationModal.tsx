@@ -10,6 +10,7 @@ import {
   X,
   ExternalLink,
 } from 'lucide-react';
+import { IICLogo } from '../common/IICLogo';
 
 export const CertificateVerificationModal: React.FC = () => {
   const { publicVerifyCertificateId, setPublicVerifyCertificateId, certificates, ambassadors } =
@@ -54,9 +55,12 @@ export const CertificateVerificationModal: React.FC = () => {
           <div className="p-8 sm:p-10 space-y-8 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
             {/* Certificate Border Enclosure */}
             <div className="border-4 border-double border-slate-300 p-8 rounded-xl bg-white/95 text-center space-y-6 relative shadow-inner">
-              {/* Seal */}
-              <div className="mx-auto w-16 h-16 rounded-full bg-slate-900 text-amber-400 flex items-center justify-center shadow-md">
-                <Award className="w-9 h-9" />
+              {/* Seal & Emblem */}
+              <div className="flex items-center justify-center gap-3">
+                <IICLogo size="lg" />
+                <div className="w-12 h-12 rounded-full bg-slate-900 text-amber-400 flex items-center justify-center shadow-md">
+                  <Award className="w-7 h-7" />
+                </div>
               </div>
 
               <div>

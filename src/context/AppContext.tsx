@@ -20,6 +20,7 @@ import {
   AppNotification,
   AuditLog,
   EmailBroadcast,
+  IICLogoSettings,
 } from '../types';
 import {
   INITIAL_USERS,
@@ -101,10 +102,26 @@ interface AppContextType {
     department?: string;
     studentId?: string;
     phone?: string;
-    status?: 'Active' | 'Inactive' | 'Suspended';
+    status?: 'Active' | 'Inactive' | 'Suspended' | 'Pending' | 'Rejected';
     avatarUrl?: string;
     bio?: string;
   }) => User;
+  registerAmbassador: (data: {
+    fullName: string;
+    studentId: string;
+    batch: string;
+    semester: string;
+    department: string;
+    avatarUrl: string;
+    email: string;
+    password: string;
+    phone?: string;
+    bio?: string;
+    skills?: string[];
+  }) => { success: boolean; error?: string; user?: User };
+  approveAmbassadorApplication: (userId: string, notes?: string) => void;
+  rejectAmbassadorApplication: (userId: string, reason?: string) => void;
+  pendingApplicationsCount: number;
   deleteUser: (userId: string) => void;
   resetUserPassword: (userId: string, newPassword?: string) => string;
   updateUser: (userId: string, updates: Partial<User>) => void;
@@ -200,6 +217,11 @@ interface AppContextType {
   markAllNotificationsAsRead: () => void;
   dispatchNotification: (notif: Partial<AppNotification>) => void;
 
+  // IIC Logo Branding settings
+  logoSettings: IICLogoSettings;
+  updateLogoSettings: (updates: Partial<IICLogoSettings>) => void;
+  resetLogoToDefault: () => void;
+
   // View state helpers
   activeView: string;
   setActiveView: (view: string) => void;
@@ -218,10 +240,6 @@ interface AppContextType {
   profileEditUserId: string | null;
   setProfileEditUserId: (id: string | null) => void;
   openProfileEdit: (userId?: string) => void;
-
-  // VPS Deployment Guide modal
-  isVpsModalOpen: boolean;
-  setIsVpsModalOpen: (open: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -242,12 +260,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
-    return localStorage.getItem('iic_current_user_id') || 'user-admin-1';
+    const savedAuth = localStorage.getItem('iic_is_authenticated');
+    if (savedAuth === 'true') {
+      return localStorage.getItem('iic_current_user_id') || 'user-admin-1';
+    }
+    return 'user-admin-1';
   });
 
+  // Authentication State: STRICT - No auto-login!
+  // Only authenticated if explicitly saved as 'true' from a previous valid login session
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     const saved = localStorage.getItem('iic_is_authenticated');
-    return saved !== 'false';
+    return saved === 'true';
   });
 
   const currentUser = useMemo(() => {
@@ -340,6 +364,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
   });
 
+  // IIC Logo Branding Settings (Persistent in localStorage)
+  const [logoSettings, setLogoSettings] = useState<IICLogoSettings>(() => {
+    const saved = localStorage.getItem('iic_logo_settings');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback to default
+      }
+    }
+    return {
+      useIICLogo: true,
+      logoUrl: '/src/assets/images/iic_official_logo_1791605685128.jpg',
+      logoType: 'official',
+      displayStyle: 'badge',
+    };
+  });
+
   // Navigation & selection state
   const [activeView, setActiveView] = useState<string>('home');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -348,7 +390,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [publicVerifyCertificateId, setPublicVerifyCertificateId] = useState<string | null>(null);
   const [isProfileEditModalOpen, setIsProfileEditModalOpen] = useState<boolean>(false);
   const [profileEditUserId, setProfileEditUserId] = useState<string | null>(null);
-  const [isVpsModalOpen, setIsVpsModalOpen] = useState<boolean>(false);
 
   const openProfileEdit = useCallback((userId?: string) => {
     setProfileEditUserId(userId || currentUserId);
@@ -480,6 +521,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [currentUser]
   );
 
+  // Update IIC Logo Settings
+  const updateLogoSettings = useCallback(
+    (updates: Partial<IICLogoSettings>) => {
+      setLogoSettings((prev) => {
+        const next = { ...prev, ...updates, updatedAt: new Date().toISOString() };
+        localStorage.setItem('iic_logo_settings', JSON.stringify(next));
+        return next;
+      });
+      logAudit('Updated Platform Branding', 'IIC Logo & display settings were updated.');
+      dispatchNotification({
+        title: 'Branding Updated',
+        message: 'Platform IIC logo display preference has been saved.',
+        type: 'approval',
+      });
+    },
+    [dispatchNotification, logAudit]
+  );
+
+  // Reset IIC Logo to default official emblem
+  const resetLogoToDefault = useCallback(() => {
+    const defaults: IICLogoSettings = {
+      useIICLogo: true,
+      logoUrl: '/src/assets/images/iic_official_logo_1791605685128.jpg',
+      logoType: 'official',
+      displayStyle: 'badge',
+      updatedAt: new Date().toISOString(),
+    };
+    setLogoSettings(defaults);
+    localStorage.setItem('iic_logo_settings', JSON.stringify(defaults));
+    logAudit('Reset IIC Logo', 'Restored official DIU IIC emblem default');
+    dispatchNotification({
+      title: 'Logo Reset to Default',
+      message: 'IIC logo has been restored to the official DIU emblem.',
+      type: 'reminder',
+    });
+  }, [dispatchNotification, logAudit]);
+
   // Switch User
   const switchUser = useCallback(
     (userId: string) => {
@@ -497,7 +575,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Logout current user session
   const logout = useCallback(() => {
     setIsAuthenticated(false);
+    localStorage.removeItem('iic_is_authenticated');
     localStorage.setItem('iic_is_authenticated', 'false');
+    localStorage.removeItem('iic_remember_me');
     setActiveView('home');
     setActiveTimer((prev) => {
       if (!prev) return null;
@@ -529,6 +609,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (user.status === 'Suspended') {
         return { success: false, error: 'Your account is currently suspended. Please contact IIC Centre Administration.' };
+      }
+
+      if (user.status === 'Pending') {
+        return {
+          success: false,
+          error: 'Your ambassador registration has been submitted and is currently pending approval by DIU IIC Centre Administration. You will be granted access once an administrator reviews and approves your application.',
+        };
+      }
+
+      if (user.status === 'Rejected') {
+        return {
+          success: false,
+          error: `Your ambassador registration was not approved by administration${user.rejectionReason ? `: ${user.rejectionReason}` : '.'} Please contact the Industrial Innovation Centre office.`,
+        };
       }
 
       // Check password: user.password or default demo passwords
@@ -865,7 +959,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       department?: string;
       studentId?: string;
       phone?: string;
-      status?: 'Active' | 'Inactive' | 'Suspended';
+      status?: 'Active' | 'Inactive' | 'Suspended' | 'Pending' | 'Rejected';
       avatarUrl?: string;
       bio?: string;
     }): User => {
@@ -1059,6 +1153,260 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [logAudit]
   );
+
+  // Ambassador Self-Registration Workflow
+  const registerAmbassador = useCallback(
+    (data: {
+      fullName: string;
+      studentId: string;
+      batch: string;
+      semester: string;
+      department: string;
+      avatarUrl: string;
+      email: string;
+      password: string;
+      phone?: string;
+      bio?: string;
+      skills?: string[];
+    }): { success: boolean; error?: string; user?: User } => {
+      const cleanEmail = data.email.trim().toLowerCase();
+      const cleanStudentId = data.studentId.trim();
+
+      if (allUsers.some((u) => u.email.trim().toLowerCase() === cleanEmail)) {
+        return {
+          success: false,
+          error: 'An account with this email address is already registered. Please sign in or use another email.',
+        };
+      }
+
+      if (
+        cleanStudentId &&
+        allUsers.some((u) => u.studentId && u.studentId.trim() === cleanStudentId)
+      ) {
+        return {
+          success: false,
+          error: `An ambassador registration with Student ID "${cleanStudentId}" already exists.`,
+        };
+      }
+
+      const newUserId = `user-amb-${Date.now()}`;
+      const newAmbId = `amb-${Date.now()}`;
+      const tempRefCode = `APP-${Date.now().toString().slice(-4)}`;
+
+      const newUser: User = {
+        id: newUserId,
+        name: data.fullName.trim(),
+        email: cleanEmail,
+        role: 'AMBASSADOR',
+        avatarUrl:
+          data.avatarUrl ||
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400',
+        ambassadorId: tempRefCode,
+        createdAt: new Date().toISOString(),
+        registeredAt: new Date().toISOString(),
+        password: data.password.trim(),
+        status: 'Pending',
+        department: data.department.trim(),
+        studentId: cleanStudentId,
+        batch: data.batch.trim(),
+        semester: data.semester.trim(),
+        phone: data.phone?.trim() || '+880 1700-000000',
+        bio:
+          data.bio?.trim() ||
+          `${data.fullName.trim()} - Registered Ambassador applicant for Industrial Innovation Centre (IIC).`,
+        skills:
+          data.skills && data.skills.length > 0
+            ? data.skills
+            : ['Innovation', 'Leadership', 'Communication'],
+      };
+
+      const newProfile: AmbassadorProfile = {
+        id: newAmbId,
+        userId: newUserId,
+        ambassadorId: tempRefCode,
+        fullName: data.fullName.trim(),
+        email: cleanEmail,
+        phone: data.phone?.trim() || '+880 1700-000000',
+        university: 'Daffodil International University (DIU)',
+        department: data.department.trim(),
+        program: `B.Sc. in ${data.department.trim()}`,
+        studentId: cleanStudentId,
+        batch: data.batch.trim(),
+        semester: data.semester.trim(),
+        graduationYear: '2027',
+        location: 'DIU Smart Campus, Ashulia',
+        joiningDate: new Date().toISOString().split('T')[0],
+        status: 'Pending',
+        avatarUrl:
+          data.avatarUrl ||
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400',
+        bio:
+          data.bio?.trim() ||
+          'Aspiring IIC Student Ambassador pending administrative cohort approval.',
+        skills:
+          data.skills && data.skills.length > 0
+            ? data.skills
+            : ['Teamwork', 'Communication', 'Innovation'],
+        interests: ['Innovation', 'Technology', 'R&D'],
+        areasOfExpertise: ['Operations'],
+        group: 'Applicant Wing',
+        onboardingCompleted: false,
+        privacySettings: {
+          showEmail: true,
+          showPhone: false,
+          showSocials: true,
+          showAvailability: true,
+          showContributionStats: true,
+          showProjects: true,
+          showCertificates: true,
+        },
+      };
+
+      setAllUsers((prev) => [newUser, ...prev]);
+      setAmbassadors((prev) => [...prev, newProfile]);
+
+      // Dispatch alert to administrators
+      dispatchNotification({
+        recipientId: 'all',
+        title: 'New Ambassador Application Submitted',
+        message: `${data.fullName.trim()} (${cleanStudentId}, ${data.department.trim()}) has submitted an ambassador registration awaiting administrative approval.`,
+        type: 'approval',
+      });
+
+      logAudit(
+        'Ambassador Application Submitted',
+        `Applicant ${data.fullName.trim()} (${cleanStudentId}) registered with ${data.department.trim()} [Pending Admin Approval]`
+      );
+
+      return { success: true, user: newUser };
+    },
+    [allUsers, dispatchNotification, logAudit]
+  );
+
+  // Admin Approval for Pending Ambassador Applications
+  const approveAmbassadorApplication = useCallback(
+    (userId: string, notes?: string) => {
+      const activeAmbassadorsCount = ambassadors.filter((a) => a.status === 'Active').length;
+      const assignedNum = String(activeAmbassadorsCount + 1).padStart(3, '0');
+      const officialAmbassadorId = `IIC-AMB-2026-${assignedNum}`;
+
+      let applicantName = '';
+      let applicantEmail = '';
+      let targetAmbId = '';
+
+      setAllUsers((prev) =>
+        prev.map((u) => {
+          if (u.id === userId) {
+            applicantName = u.name;
+            applicantEmail = u.email;
+            return {
+              ...u,
+              status: 'Active',
+              ambassadorId: officialAmbassadorId,
+              approvedAt: new Date().toISOString(),
+              approvedBy: currentUser.name,
+            };
+          }
+          return u;
+        })
+      );
+
+      setAmbassadors((prev) =>
+        prev.map((a) => {
+          if (a.userId === userId) {
+            targetAmbId = a.id;
+            return {
+              ...a,
+              status: 'Active',
+              ambassadorId: officialAmbassadorId,
+            };
+          }
+          return a;
+        })
+      );
+
+      // Ensure availability record exists so newly approved ambassador can immediately customize schedules
+      if (targetAmbId) {
+        setAvailabilityList((prev) => {
+          if (prev.some((av) => av.ambassadorId === targetAmbId)) {
+            return prev;
+          }
+          const defaultAvail: AmbassadorAvailability = {
+            ambassadorId: targetAmbId,
+            lastUpdated: new Date().toISOString().split('T')[0],
+            weeklySchedule: [
+              { day: 'Saturday', isAvailable: true, slots: [{ startTime: '10:00', endTime: '18:00' }] },
+              { day: 'Sunday', isAvailable: false, slots: [] },
+              { day: 'Monday', isAvailable: true, slots: [{ startTime: '16:00', endTime: '20:00' }] },
+              { day: 'Tuesday', isAvailable: true, slots: [{ startTime: '16:00', endTime: '20:00' }] },
+              { day: 'Wednesday', isAvailable: true, slots: [{ startTime: '16:00', endTime: '20:00' }] },
+              { day: 'Thursday', isAvailable: false, slots: [] },
+              { day: 'Friday', isAvailable: false, slots: [] },
+            ],
+          };
+          return [...prev, defaultAvail];
+        });
+      }
+
+      // Notify and audit
+      dispatchNotification({
+        recipientId: targetAmbId || 'all',
+        title: 'Ambassador Application Approved!',
+        message: `Congratulations! ${applicantName}'s application has been approved. Assigned Ambassador ID: ${officialAmbassadorId}. They can now sign in and set their duty schedules.`,
+        type: 'approval',
+      });
+
+      logAudit(
+        'Ambassador Application Approved',
+        `Admin ${currentUser.name} approved application for ${applicantName} (${applicantEmail}). Assigned: ${officialAmbassadorId}${
+          notes ? ` - Notes: ${notes}` : ''
+        }`
+      );
+    },
+    [ambassadors, currentUser.name, dispatchNotification, logAudit]
+  );
+
+  // Admin Rejection for Pending Applications
+  const rejectAmbassadorApplication = useCallback(
+    (userId: string, reason?: string) => {
+      let applicantName = '';
+      setAllUsers((prev) =>
+        prev.map((u) => {
+          if (u.id === userId) {
+            applicantName = u.name;
+            return {
+              ...u,
+              status: 'Rejected',
+              rejectionReason: reason || 'Application did not meet current cohort selection criteria.',
+            };
+          }
+          return u;
+        })
+      );
+
+      setAmbassadors((prev) =>
+        prev.map((a) => {
+          if (a.userId === userId) {
+            return {
+              ...a,
+              status: 'Rejected',
+            };
+          }
+          return a;
+        })
+      );
+
+      logAudit(
+        'Ambassador Application Rejected',
+        `Admin ${currentUser.name} rejected application for ${applicantName}. Reason: ${
+          reason || 'Cohort criteria not met'
+        }`
+      );
+    },
+    [currentUser.name, logAudit]
+  );
+
+  const pendingApplicationsCount = allUsers.filter((u) => u.status === 'Pending').length;
 
   // Punch In
   const punchIn = useCallback(
@@ -1959,6 +2307,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // User Management
         createUser,
+        registerAmbassador,
+        approveAmbassadorApplication,
+        rejectAmbassadorApplication,
+        pendingApplicationsCount,
         deleteUser,
         resetUserPassword,
         updateUser,
@@ -2029,6 +2381,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markAllNotificationsAsRead,
         dispatchNotification,
 
+        logoSettings,
+        updateLogoSettings,
+        resetLogoToDefault,
+
         activeView,
         setActiveView,
         selectedTaskId,
@@ -2045,9 +2401,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         profileEditUserId,
         setProfileEditUserId,
         openProfileEdit,
-
-        isVpsModalOpen,
-        setIsVpsModalOpen,
       }}
     >
       {children}

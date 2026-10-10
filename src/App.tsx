@@ -12,9 +12,9 @@ import { MobileBottomNav } from './components/common/MobileBottomNav';
 import { NotificationDrawer } from './components/common/NotificationDrawer';
 import { UserSwitchModal } from './components/auth/UserSwitchModal';
 import { LoginPage } from './components/auth/LoginPage';
+import { RegisterAmbassadorPage } from './components/auth/RegisterAmbassadorPage';
 import { CertificateVerificationModal } from './components/public/CertificateVerificationModal';
 import { ProfileEditModal } from './components/common/ProfileEditModal';
-import { VpsDeploymentModal } from './components/common/VpsDeploymentModal';
 import { Lock } from 'lucide-react';
 
 // Ambassador Views
@@ -35,6 +35,7 @@ import { AdminCommunicationView } from './components/admin/AdminCommunicationVie
 import { AdminCertificatesView } from './components/admin/AdminCertificatesView';
 import { AdminReportsView } from './components/admin/AdminReportsView';
 import { AdminAuditLogView } from './components/admin/AdminAuditLogView';
+import { AdminSettingsView } from './components/admin/AdminSettingsView';
 
 // Shared Views
 import { Homepage } from './components/home/Homepage';
@@ -51,8 +52,6 @@ function MainApp() {
     setActiveView,
     setPublicVerifyCertificateId,
     setSelectedAmbassadorId,
-    isVpsModalOpen,
-    setIsVpsModalOpen,
   } = useApp();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -80,10 +79,16 @@ function MainApp() {
       <div className="min-h-screen bg-slate-900 text-slate-100 font-sans antialiased">
         <LoginPage />
         <CertificateVerificationModal />
-        <VpsDeploymentModal
-          isOpen={isVpsModalOpen}
-          onClose={() => setIsVpsModalOpen(false)}
-        />
+      </div>
+    );
+  }
+
+  // When register view is selected, render RegisterAmbassadorPage
+  if (activeView === 'register' || activeView === 'register-ambassador') {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 font-sans antialiased">
+        <RegisterAmbassadorPage />
+        <CertificateVerificationModal />
       </div>
     );
   }
@@ -149,6 +154,10 @@ function MainApp() {
       case 'admin-audit':
         if (!isAuthenticated) return renderAuthRequired();
         return <AdminAuditLogView />;
+      case 'settings':
+      case 'admin-settings':
+        if (!isAuthenticated) return renderAuthRequired();
+        return <AdminSettingsView />;
 
       default:
         // Default to Homepage & Showcase!
@@ -231,11 +240,6 @@ function MainApp() {
 
       {/* Public & Shared Modals */}
       <CertificateVerificationModal />
-
-      <VpsDeploymentModal
-        isOpen={isVpsModalOpen}
-        onClose={() => setIsVpsModalOpen(false)}
-      />
     </div>
   );
 }

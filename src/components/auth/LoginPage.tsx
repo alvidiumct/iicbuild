@@ -12,15 +12,18 @@ import {
   AlertCircle,
   Sparkles,
   Home,
-  Server,
+  ShieldCheck,
+  UserPlus,
 } from 'lucide-react';
+import { IICLogo } from '../common/IICLogo';
 
 export const LoginPage: React.FC = () => {
-  const { login, setPublicVerifyCertificateId, setActiveView, setIsVpsModalOpen } = useApp();
+  const { login, setPublicVerifyCertificateId, setActiveView } = useApp();
 
-  const [email, setEmail] = useState('admin@diu.edu.bd');
-  const [password, setPassword] = useState('admin#iic@2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -30,15 +33,38 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setErrorMessage('Please enter your university email address.');
+      return;
+    }
+
+    if (!trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
+      setErrorMessage('Please provide a valid email format (e.g. user@diu.edu.bd).');
+      return;
+    }
+
+    if (!password) {
+      setErrorMessage('Please enter your account password.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     setTimeout(() => {
-      const res = login(email, password);
+      const res = login(trimmedEmail, password);
       if (!res.success) {
-        setErrorMessage(res.error || 'Failed to authenticate. Please check your credentials.');
+        setErrorMessage(res.error || 'Authentication failed. Please verify your credentials.');
+      } else {
+        if (rememberMe) {
+          localStorage.setItem('iic_remember_me', 'true');
+        } else {
+          localStorage.removeItem('iic_remember_me');
+        }
       }
       setIsSubmitting(false);
-    }, 350);
+    }, 400);
   };
 
   const handleForgotSubmit = (e: React.FormEvent) => {
@@ -55,10 +81,8 @@ export const LoginPage: React.FC = () => {
 
       {/* Top Bar with public verification link */}
       <div className="w-full max-w-5xl mx-auto flex items-center justify-between text-xs text-slate-400 z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded bg-[#214FA2] text-white flex items-center justify-center font-black text-xs shadow-md">
-            IIC
-          </div>
+        <div className="flex items-center gap-2.5">
+          <IICLogo size="sm" />
           <span className="font-semibold text-slate-200">Industrial Innovation Centre</span>
           <span className="hidden sm:inline text-slate-500">· Daffodil International University</span>
         </div>
@@ -70,14 +94,6 @@ export const LoginPage: React.FC = () => {
           >
             <Home className="w-3.5 h-3.5 text-blue-400" />
             <span>← Homepage & Showcase</span>
-          </button>
-
-          <button
-            onClick={() => setIsVpsModalOpen(true)}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors text-xs"
-          >
-            <Server className="w-3.5 h-3.5 text-slate-400" />
-            <span>VPS Guide</span>
           </button>
 
           <button
@@ -94,24 +110,27 @@ export const LoginPage: React.FC = () => {
       <div className="w-full max-w-4xl mx-auto my-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center z-10 py-6">
         {/* Left Branding & Highlights Column */}
         <div className="lg:col-span-6 text-white space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#214FA2]/30 border border-[#214FA2]/50 text-blue-300 text-xs font-semibold backdrop-blur-xs">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>DIU Innovation Platform v2.4</span>
+          <div className="flex items-center gap-3">
+            <IICLogo size="lg" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#214FA2]/30 border border-[#214FA2]/50 text-blue-300 text-xs font-semibold backdrop-blur-xs">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>DIU Innovation Platform</span>
+            </div>
           </div>
 
           <div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
-              Student Ambassador & Admin Portal
+              Ambassador & Admin Sign In
             </h1>
             <p className="mt-3 text-sm text-slate-300 leading-relaxed">
-              Empowering student innovators, verifying academic credentials, and coordinating multidisciplinary R&D initiatives at Daffodil International University.
+              Secure institutional access for Daffodil International University Student Ambassadors, Project Leads, and Centre Administration.
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3 pt-2">
             <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/80 backdrop-blur-xs">
-              <div className="text-lg font-bold text-white">R&D Labs</div>
-              <div className="text-xs text-slate-400 font-medium">Applied Incubation</div>
+              <div className="text-lg font-bold text-white">R&D Incubator</div>
+              <div className="text-xs text-slate-400 font-medium">Applied Industry Projects</div>
             </div>
             <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/80 backdrop-blur-xs">
               <div className="text-lg font-bold text-emerald-400">Verified QR</div>
@@ -127,11 +146,11 @@ export const LoginPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 text-slate-300">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Multidisciplinary Engineering & Tech Prototyping</span>
+              <span>Multi-tier Role-Based Access Control (RBAC)</span>
             </div>
             <div className="flex items-center gap-2 text-slate-300">
               <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              <span>Cryptographically Verified Ambassador Portfolios</span>
+              <span>Tamper-Proof Audit Logging & Time Verification</span>
             </div>
           </div>
         </div>
@@ -140,9 +159,15 @@ export const LoginPage: React.FC = () => {
         <div className="lg:col-span-6">
           <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 border border-slate-200/80">
             <div className="mb-6">
-              <h2 className="text-xl font-bold text-slate-900">Sign in to your account</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-900">Sign in to your account</h2>
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Secure SSL</span>
+                </div>
+              </div>
               <p className="text-xs text-slate-500 mt-1">
-                Enter your university email address and assigned password
+                Enter your university credentials to access the workspace
               </p>
             </div>
 
@@ -169,7 +194,7 @@ export const LoginPage: React.FC = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@diu.edu.bd"
+                    placeholder="e.g. admin@diu.edu.bd"
                     className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors"
                   />
                 </div>
@@ -196,7 +221,7 @@ export const LoginPage: React.FC = () => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter account password"
+                    placeholder="Enter your account password"
                     className="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors"
                   />
                   <button
@@ -210,30 +235,29 @@ export const LoginPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Remember me & Demo credentials reminder */}
+              {/* Remember me */}
               <div className="flex items-center justify-between pt-1">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    defaultChecked
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
                     className="w-3.5 h-3.5 rounded text-[#214FA2] border-slate-300 focus:ring-[#214FA2]"
                   />
                   <span className="text-xs text-slate-600 font-medium">Keep me signed in</span>
                 </label>
-
-                <div className="text-[11px] text-slate-400">Default demo: iic@2026</div>
               </div>
 
               {/* Submit Button */}
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-2.5 px-4 rounded-lg bg-[#214FA2] hover:bg-[#1a3f85] text-white font-semibold text-xs shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-2"
+                className="w-full py-2.5 px-4 rounded-lg bg-[#214FA2] hover:bg-[#1a3f85] text-white font-semibold text-xs shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-2 cursor-pointer"
               >
                 {isSubmitting ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Signing In...</span>
+                    <span>Verifying Credentials...</span>
                   </>
                 ) : (
                   <>
@@ -244,22 +268,36 @@ export const LoginPage: React.FC = () => {
               </button>
             </form>
 
-            {/* Hint Box for newly created ambassadors */}
-            <div className="mt-5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
-              <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Admin Provisioned Accounts</span>
+            {/* Register as Ambassador Action Box */}
+            <div className="mt-5 pt-4 border-t border-slate-100">
+              <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#214FA2]/10 text-[#214FA2] flex items-center justify-center shrink-0 mt-0.5">
+                    <UserPlus className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-slate-900">New Student Ambassador?</div>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      Register with your DIU Student ID, department, batch, semester, and official formal photo. Applications are reviewed and approved by Centre Administration.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveView('register-ambassador')}
+                      className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#214FA2] hover:bg-[#1a3f85] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    >
+                      <span>Register as Ambassador</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
               </div>
-              <p className="text-[11px] text-slate-500 leading-normal">
-                If an administrator created your ambassador account, use the email and password provided in your induction credentials or CSV export.
-              </p>
             </div>
 
             <div className="mt-4 text-center">
               <button
                 type="button"
                 onClick={() => setActiveView('home')}
-                className="text-xs font-semibold text-slate-500 hover:text-[#214FA2] transition-colors inline-flex items-center gap-1.5"
+                className="text-xs font-semibold text-slate-500 hover:text-[#214FA2] transition-colors inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <Home className="w-3.5 h-3.5" />
                 <span>Return to Public Homepage & Showcase</span>
@@ -283,7 +321,7 @@ export const LoginPage: React.FC = () => {
                   setShowForgotModal(false);
                   setForgotSent(false);
                 }}
-                className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1"
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1 cursor-pointer"
               >
                 ✕
               </button>
@@ -305,7 +343,7 @@ export const LoginPage: React.FC = () => {
                       setShowForgotModal(false);
                       setForgotSent(false);
                     }}
-                    className="w-full py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800"
+                    className="w-full py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 cursor-pointer"
                   >
                     Back to Sign In
                   </button>
@@ -324,13 +362,13 @@ export const LoginPage: React.FC = () => {
                       required
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
-                      placeholder="student@diu.edu.bd"
+                      placeholder="e.g. name@diu.edu.bd"
                       className="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2]"
                     />
                   </div>
                   <button
                     type="submit"
-                    className="w-full py-2.5 bg-[#214FA2] hover:bg-[#1a3f85] text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                    className="w-full py-2.5 bg-[#214FA2] hover:bg-[#1a3f85] text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <KeyRound className="w-4 h-4" />
                     <span>Send Reset Instructions</span>

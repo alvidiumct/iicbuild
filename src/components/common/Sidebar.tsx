@@ -21,8 +21,9 @@ import {
   Shield,
   Edit3,
   LogOut,
-  Server,
+  Settings,
 } from 'lucide-react';
+import { IICLogo } from './IICLogo';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -41,7 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     setSelectedAmbassadorId,
     openProfileEdit,
     logout,
-    setIsVpsModalOpen,
+    pendingApplicationsCount,
   } = useApp();
 
   const handleNavClick = (viewKey: string) => {
@@ -80,9 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         {/* Mobile Header in Drawer */}
         <div className="flex items-center justify-between h-14 px-4 border-b border-slate-200 md:hidden">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded bg-[#214FA2] text-white flex items-center justify-center font-bold text-xs">
-              IIC
-            </div>
+            <IICLogo size="xs" />
             <span className="font-bold text-sm text-slate-900">Navigation</span>
           </div>
           <button
@@ -193,6 +192,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 icon={<Shield className="w-4 h-4" />}
                 label="User & Access Management"
                 active={activeView === 'admin-users'}
+                badge={pendingApplicationsCount > 0 ? `${pendingApplicationsCount} pending` : undefined}
+                badgeColor="bg-amber-100 text-amber-800"
                 onClick={() => handleNavClick('admin-users')}
               />
 
@@ -277,13 +278,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               />
 
               <SidebarLink
-                icon={<Server className="w-4 h-4 text-indigo-500" />}
-                label="VPS Deployment Guide"
-                active={false}
-                onClick={() => {
-                  setIsVpsModalOpen(true);
-                  onClose();
-                }}
+                icon={<Settings className="w-4 h-4" />}
+                label="Settings & IIC Logo"
+                active={activeView === 'settings' || activeView === 'admin-settings'}
+                onClick={() => handleNavClick('admin-settings')}
               />
             </>
           ) : (
@@ -365,6 +363,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
                 label="Announcements"
                 active={activeView === 'announcements'}
                 onClick={() => handleNavClick('announcements')}
+              />
+
+              <SidebarLink
+                icon={<Settings className="w-4 h-4" />}
+                label="Settings & Logo"
+                active={activeView === 'settings' || activeView === 'admin-settings'}
+                onClick={() => handleNavClick('settings')}
               />
             </>
           )}

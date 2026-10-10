@@ -1,6 +1,6 @@
 export type UserRole = 'ADMIN' | 'AMBASSADOR';
 
-export type AmbassadorStatus = 'Active' | 'Pending' | 'Inactive' | 'Suspended' | 'Completed';
+export type AmbassadorStatus = 'Active' | 'Pending' | 'Inactive' | 'Suspended' | 'Completed' | 'Rejected';
 
 export type TaskStatus =
   | 'Assigned'
@@ -35,15 +35,21 @@ export interface User {
   ambassadorId?: string;
   createdAt: string;
   password?: string;
-  status?: 'Active' | 'Inactive' | 'Suspended';
+  status?: 'Active' | 'Inactive' | 'Suspended' | 'Pending' | 'Rejected';
   department?: string;
   studentId?: string;
+  batch?: string;
+  semester?: string;
   phone?: string;
   bio?: string;
   skills?: string[];
   portfolioUrl?: string;
   linkedInUrl?: string;
   gitHubUrl?: string;
+  registeredAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectionReason?: string;
 }
 
 export interface AmbassadorProfile {
@@ -58,6 +64,7 @@ export interface AmbassadorProfile {
   program: string;
   studentId: string;
   batch: string;
+  semester?: string;
   graduationYear: string;
   location: string;
   joiningDate: string;
@@ -314,4 +321,12 @@ export interface EmailBroadcast {
   sentAt: string;
   sentBy: string;
   templateType: string;
+}
+
+export interface IICLogoSettings {
+  useIICLogo: boolean;
+  logoUrl: string;
+  logoType: 'official' | 'custom';
+  displayStyle: 'icon-only' | 'icon-and-text' | 'badge';
+  updatedAt?: string;
 }

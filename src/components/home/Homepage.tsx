@@ -30,8 +30,9 @@ import {
   FileText,
   User,
   GraduationCap,
-  Server,
+  UserPlus,
 } from 'lucide-react';
+import { IICLogo } from '../common/IICLogo';
 
 export const Homepage: React.FC = () => {
   const {
@@ -46,7 +47,6 @@ export const Homepage: React.FC = () => {
     certificates,
     events,
     isAuthenticated,
-    setIsVpsModalOpen,
   } = useApp();
 
   // Project Filtering & Search
@@ -178,8 +178,8 @@ export const Homepage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             {/* Left Content Column */}
             <div className="lg:col-span-7 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[#214FA2] text-xs font-semibold">
-                <Sparkles className="w-3.5 h-3.5" />
+              <div className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200/80 text-[#214FA2] text-xs font-semibold shadow-2xs">
+                <IICLogo size="xs" />
                 <span>Industrial Innovation Centre · Daffodil International University</span>
               </div>
 
@@ -211,8 +211,16 @@ export const Homepage: React.FC = () => {
                 </a>
 
                 <button
+                  onClick={() => setActiveView('register-ambassador')}
+                  className="px-4 py-2.5 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Register as Ambassador</span>
+                </button>
+
+                <button
                   onClick={() => setPublicVerifyCertificateId('CERT-2026-001')}
-                  className="px-4 py-2.5 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition-colors flex items-center gap-1.5"
+                  className="px-4 py-2.5 text-xs font-semibold rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Award className="w-3.5 h-3.5 text-amber-600" />
                   <span>Verify Certificate</span>
@@ -887,13 +895,6 @@ export const Homepage: React.FC = () => {
               className="hover:text-[#214FA2] transition-colors"
             >
               Verify Certificate
-            </button>
-            <button
-              onClick={() => setIsVpsModalOpen(true)}
-              className="hover:text-[#214FA2] transition-colors flex items-center gap-1 font-medium text-indigo-700"
-            >
-              <Server className="w-3.5 h-3.5 text-indigo-600" />
-              <span>VPS Deployment Guide</span>
             </button>
             <button
               onClick={() => setActiveView(isAuthenticated ? 'dashboard' : 'login')}

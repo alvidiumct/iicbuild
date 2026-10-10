@@ -23,6 +23,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { BulkAmbassadorModal } from './BulkAmbassadorModal';
+import { DIU_DEPARTMENTS } from '../../data/departments';
 
 export const AdminAmbassadorList: React.FC = () => {
   const {
@@ -189,13 +190,14 @@ export const AdminAmbassadorList: React.FC = () => {
           <select
             value={departmentFilter}
             onChange={(e) => setDepartmentFilter(e.target.value)}
-            className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-hidden"
+            className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-hidden max-w-[200px] truncate"
           >
             <option value="All">All Departments</option>
-            <option value="SWE">SWE</option>
-            <option value="CSE">CSE</option>
-            <option value="MCT">MCT</option>
-            <option value="EEE">EEE</option>
+            {DIU_DEPARTMENTS.map((dept) => (
+              <option key={dept.name} value={dept.name}>
+                {dept.name}
+              </option>
+            ))}
           </select>
 
           <select
@@ -205,6 +207,7 @@ export const AdminAmbassadorList: React.FC = () => {
           >
             <option value="All">All Statuses</option>
             <option value="Active">Active</option>
+            <option value="Pending">Pending Approval</option>
             <option value="Inactive">Inactive</option>
             <option value="Suspended">Suspended</option>
             <option value="Completed Tenure">Completed Tenure</option>
