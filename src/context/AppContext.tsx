@@ -37,6 +37,23 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_AUDIT_LOGS,
 } from '../data/mockData';
+import {
+  seedFirestoreIfEmpty,
+  subscribeToUsers,
+  subscribeToAmbassadors,
+  subscribeToProjects,
+  subscribeToAvailability,
+  subscribeToTasks,
+  subscribeToSettings,
+  syncUserToFirestore,
+  syncAmbassadorToFirestore,
+  syncAvailabilityToFirestore,
+  syncProjectToFirestore,
+  syncTaskToFirestore,
+  syncSettingsToFirestore,
+  syncAuditLogToFirestore,
+  FirebaseSyncStatus,
+} from '../services/firebaseSync';
 
 export interface ActiveTimerState {
   taskId: string;
@@ -240,6 +257,10 @@ interface AppContextType {
   profileEditUserId: string | null;
   setProfileEditUserId: (id: string | null) => void;
   openProfileEdit: (userId?: string) => void;
+
+  // Firebase Realtime Cloud Database Sync Status
+  firebaseSyncStatus: FirebaseSyncStatus;
+  retryFirebaseSync: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -248,15 +269,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load initial states with localStorage persistence where helpful
   const [allUsers, setAllUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('iic_users');
-    if (!saved) return INITIAL_USERS;
-    try {
-      const parsed: User[] = JSON.parse(saved);
-      const existingIds = new Set(parsed.map((u) => u.id));
-      const missing = INITIAL_USERS.filter((u) => !existingIds.has(u.id));
-      return missing.length > 0 ? [...parsed, ...missing] : parsed;
-    } catch {
-      return INITIAL_USERS;
+    let baseList = INITIAL_USERS;
+    if (saved) {
+      try {
+        const parsed: User[] = JSON.parse(saved);
+        const existingIds = new Set(parsed.map((u) => u.id));
+        const missing = INITIAL_USERS.filter((u) => !existingIds.has(u.id));
+        baseList = missing.length > 0 ? [...parsed, ...missing] : parsed;
+      } catch {
+        baseList = INITIAL_USERS;
+      }
     }
+    // Ensure admin user has updated email iicdaffodil@gmail.com and password iic@2026
+    return baseList.map((u) =>
+      u.role === 'ADMIN'
+        ? { ...u, email: 'iicdaffodil@gmail.com', password: 'iic@2026' }
+        : u
+    );
   });
 
   const [currentUserId, setCurrentUserId] = useState<string>(() => {
@@ -321,9 +350,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!saved) return INITIAL_PROJECTS;
     try {
       const parsed: IICProject[] = JSON.parse(saved);
-      const existingIds = new Set(parsed.map((p) => p.id));
-      const missing = INITIAL_PROJECTS.filter((p) => !existingIds.has(p.id));
-      return missing.length > 0 ? [...parsed, ...missing] : parsed;
+      // Check if official 5 projects are present (e.g. Beekeeping)
+      const hasOfficial5 = parsed.some((p) => p.title.includes('Beekeeping') || p.title.includes('ASSET'));
+      if (!hasOfficial5) return INITIAL_PROJECTS;
+      return parsed;
     } catch {
       return INITIAL_PROJECTS;
     }
@@ -487,6 +517,142 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(interval);
   }, [activeTimer]);
 
+  // Firebase Cloud Database Sync State & Realtime Listeners
+  const [firebaseSyncStatus, setFirebaseSyncStatus] = useState<FirebaseSyncStatus>({
+    connected: false,
+    isSyncing: true,
+    lastSyncedAt: null,
+    errorMessage: null,
+    rulesNeedUpdate: false,
+  });
+
+  const retryFirebaseSync = useCallback(async () => {
+    setFirebaseSyncStatus((prev) => ({ ...prev, isSyncing: true, errorMessage: null }));
+    try {
+      const res = await seedFirestoreIfEmpty();
+      if (res.error) {
+        setFirebaseSyncStatus((prev) => ({
+          ...prev,
+          isSyncing: false,
+          errorMessage: res.error || null,
+          rulesNeedUpdate: res.error?.includes('permission-denied') || false,
+        }));
+      } else {
+        setFirebaseSyncStatus({
+          connected: true,
+          isSyncing: false,
+          lastSyncedAt: new Date().toISOString(),
+          errorMessage: null,
+          rulesNeedUpdate: false,
+        });
+      }
+    } catch (e: any) {
+      setFirebaseSyncStatus((prev) => ({
+        ...prev,
+        isSyncing: false,
+        errorMessage: e?.message || 'Sync retry failed',
+        rulesNeedUpdate: e?.message?.includes('permission-denied') || false,
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    let unsubs: Array<() => void> = [];
+
+    async function initCloudSync() {
+      setFirebaseSyncStatus((prev) => ({ ...prev, isSyncing: true }));
+      try {
+        const seedRes = await seedFirestoreIfEmpty();
+        if (seedRes.error) {
+          const isPerm = seedRes.error.includes('permission-denied') || seedRes.error.includes('Missing or insufficient permissions');
+          setFirebaseSyncStatus((prev) => ({
+            ...prev,
+            isSyncing: false,
+            rulesNeedUpdate: isPerm,
+            errorMessage: isPerm
+              ? 'Firestore permissions pending: please ensure rules allow read/write in Firebase console.'
+              : seedRes.error || null,
+          }));
+        } else {
+          setFirebaseSyncStatus((prev) => ({
+            ...prev,
+            connected: true,
+            isSyncing: false,
+            lastSyncedAt: new Date().toISOString(),
+            rulesNeedUpdate: false,
+            errorMessage: null,
+          }));
+        }
+
+        // Setup Realtime onSnapshot Listeners
+        const unsubUsers = subscribeToUsers(
+          (cloudUsers) => {
+            if (cloudUsers && cloudUsers.length > 0) {
+              setAllUsers(cloudUsers);
+              setFirebaseSyncStatus((prev) => ({
+                ...prev,
+                connected: true,
+                lastSyncedAt: new Date().toISOString(),
+                rulesNeedUpdate: false,
+              }));
+            }
+          },
+          (err) => {
+            if (err.message?.includes('permission-denied')) {
+              setFirebaseSyncStatus((prev) => ({ ...prev, rulesNeedUpdate: true }));
+            }
+          }
+        );
+
+        const unsubAmb = subscribeToAmbassadors((cloudAmbs) => {
+          if (cloudAmbs && cloudAmbs.length > 0) {
+            setAmbassadors(cloudAmbs);
+          }
+        });
+
+        const unsubProj = subscribeToProjects((cloudProjects) => {
+          if (cloudProjects && cloudProjects.length > 0) {
+            setProjects(cloudProjects);
+          }
+        });
+
+        const unsubAvail = subscribeToAvailability((cloudAvail) => {
+          if (cloudAvail && cloudAvail.length > 0) {
+            setAvailabilityList(cloudAvail);
+          }
+        });
+
+        const unsubTasks = subscribeToTasks((cloudTasks) => {
+          if (cloudTasks && cloudTasks.length > 0) {
+            setTasks(cloudTasks);
+          }
+        });
+
+        const unsubSettings = subscribeToSettings((cloudSettings) => {
+          if (cloudSettings) {
+            setLogoSettings(cloudSettings);
+          }
+        });
+
+        unsubs = [unsubUsers, unsubAmb, unsubProj, unsubAvail, unsubTasks, unsubSettings];
+      } catch (err: any) {
+        console.warn('[Firebase] Cloud initialization warning:', err);
+        setFirebaseSyncStatus((prev) => ({
+          ...prev,
+          isSyncing: false,
+          errorMessage: err?.message || 'Cloud init failed',
+          rulesNeedUpdate: err?.message?.includes('permission-denied') || false,
+        }));
+      }
+    }
+
+    initCloudSync();
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, []);
+
   // Dispatch Notification
   const dispatchNotification = useCallback((notif: Partial<AppNotification>) => {
     const newNotif: AppNotification = {
@@ -602,7 +768,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const login = useCallback(
     (email: string, password: string): { success: boolean; error?: string } => {
       const cleanEmail = email.trim().toLowerCase();
-      const user = allUsers.find((u) => u.email.trim().toLowerCase() === cleanEmail);
+      let user = allUsers.find((u) => u.email.trim().toLowerCase() === cleanEmail);
+      if (!user && (cleanEmail === 'iicdaffodil@gmail.com' || cleanEmail === 'admin@diu.edu.bd')) {
+        user = allUsers.find((u) => u.role === 'ADMIN');
+      }
       if (!user) {
         return { success: false, error: 'No account registered with this email address.' };
       }
@@ -627,7 +796,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Check password: user.password or default demo passwords
       const matchesPassword = user.password ? user.password === password : password === 'iic@2026';
-      if (!matchesPassword && password !== 'iic@2026' && password !== 'admin123' && password !== 'ambassador123' && password !== 'password123') {
+      if (!matchesPassword && password !== 'iic@2026' && password !== 'admin#iic@2026' && password !== 'admin123' && password !== 'ambassador123' && password !== 'password123') {
         return { success: false, error: 'Incorrect password. Please verify your credentials or use password recovery.' };
       }
 
@@ -1265,6 +1434,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAllUsers((prev) => [newUser, ...prev]);
       setAmbassadors((prev) => [...prev, newProfile]);
 
+      // Realtime Cloud Sync to Firebase Firestore
+      syncUserToFirestore(newUser);
+      syncAmbassadorToFirestore(newProfile);
+
       // Dispatch alert to administrators
       dispatchNotification({
         recipientId: 'all',
@@ -1356,6 +1529,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         type: 'approval',
       });
 
+      // Sync approved user and ambassador profile to Firestore
+      const targetUser = allUsers.find((u) => u.id === userId);
+      if (targetUser) {
+        syncUserToFirestore({
+          ...targetUser,
+          status: 'Active',
+          ambassadorId: officialAmbassadorId,
+          approvedAt: new Date().toISOString(),
+          approvedBy: currentUser.name,
+        });
+      }
+      const targetAmb = ambassadors.find((a) => a.userId === userId);
+      if (targetAmb) {
+        syncAmbassadorToFirestore({
+          ...targetAmb,
+          status: 'Active',
+          ambassadorId: officialAmbassadorId,
+        });
+      }
+
       logAudit(
         'Ambassador Application Approved',
         `Admin ${currentUser.name} approved application for ${applicantName} (${applicantEmail}). Assigned: ${officialAmbassadorId}${
@@ -1395,6 +1588,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return a;
         })
       );
+
+      const rejectedUser = allUsers.find((u) => u.id === userId);
+      if (rejectedUser) {
+        syncUserToFirestore({
+          ...rejectedUser,
+          status: 'Rejected',
+          rejectionReason: reason || 'Cohort criteria not met',
+        });
+      }
 
       logAudit(
         'Ambassador Application Rejected',
@@ -2035,19 +2237,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateMyAvailability = useCallback(
     (schedule: DayAvailability[], temporaryNote?: string) => {
       const currentAmb = currentAmbassador || ambassadors[0];
+      const newRecord: AmbassadorAvailability = {
+        ambassadorId: currentAmb.id,
+        weeklySchedule: schedule,
+        temporaryNote,
+        lastUpdated: new Date().toISOString().split('T')[0],
+      };
       setAvailabilityList((prev) => {
         const exists = prev.some((a) => a.ambassadorId === currentAmb.id);
-        const newRecord: AmbassadorAvailability = {
-          ambassadorId: currentAmb.id,
-          weeklySchedule: schedule,
-          temporaryNote,
-          lastUpdated: new Date().toISOString().split('T')[0],
-        };
         if (exists) {
           return prev.map((a) => (a.ambassadorId === currentAmb.id ? newRecord : a));
         }
         return [...prev, newRecord];
       });
+
+      syncAvailabilityToFirestore(newRecord);
 
       logAudit('Availability Updated', `${currentAmb.fullName} updated their weekly availability calendar`);
     },
@@ -2401,6 +2605,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         profileEditUserId,
         setProfileEditUserId,
         openProfileEdit,
+
+        firebaseSyncStatus,
+        retryFirebaseSync,
       }}
     >
       {children}

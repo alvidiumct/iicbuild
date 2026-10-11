@@ -504,7 +504,7 @@ export const RegisterAmbassadorPage: React.FC = () => {
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         placeholder="e.g. Tanvir Ahmed Chowdhury"
-                        className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors"
+                        className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors text-black font-medium bg-white"
                       />
                     </div>
                   </div>
@@ -524,7 +524,7 @@ export const RegisterAmbassadorPage: React.FC = () => {
                         value={studentId}
                         onChange={(e) => setStudentId(e.target.value)}
                         placeholder="e.g. 221-15-12345"
-                        className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors font-mono"
+                        className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors font-mono text-black font-medium bg-white"
                       />
                     </div>
                   </div>
@@ -542,7 +542,7 @@ export const RegisterAmbassadorPage: React.FC = () => {
                       value={batch}
                       onChange={(e) => setBatch(e.target.value)}
                       placeholder="e.g. 62"
-                      className="w-full text-xs px-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors"
+                      className="w-full text-xs px-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors text-black font-medium bg-white"
                     />
                     <span className="text-[10px] text-slate-500 mt-0.5 block">
                       Enter your numeric batch (e.g. 62)
@@ -614,7 +614,7 @@ export const RegisterAmbassadorPage: React.FC = () => {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="e.g. tanvir.swe@diu.edu.bd"
-                        className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors"
+                        className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors text-black font-medium bg-white"
                       />
                     </div>
                   </div>
@@ -633,7 +633,7 @@ export const RegisterAmbassadorPage: React.FC = () => {
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         placeholder="e.g. +880 1712-345678"
-                        className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors font-mono"
+                        className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors font-mono text-black font-medium bg-white"
                       />
                     </div>
                   </div>
@@ -653,7 +653,7 @@ export const RegisterAmbassadorPage: React.FC = () => {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Create password (min 6 characters)"
-                        className="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors"
+                        className="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors text-black font-medium bg-white"
                       />
                       <button
                         type="button"
@@ -680,7 +680,7 @@ export const RegisterAmbassadorPage: React.FC = () => {
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="Re-enter password"
-                        className="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors"
+                        className="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors text-black font-medium bg-white"
                       />
                       <button
                         type="button"

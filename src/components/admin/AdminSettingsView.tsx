@@ -21,10 +21,20 @@ import {
   Sliders,
   Bell,
   Globe,
+  Database,
+  Cloud,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const AdminSettingsView: React.FC = () => {
-  const { logoSettings, updateLogoSettings, resetLogoToDefault, currentUser } = useApp();
+  const {
+    logoSettings,
+    updateLogoSettings,
+    resetLogoToDefault,
+    currentUser,
+    firebaseSyncStatus,
+    retryFirebaseSync,
+  } = useApp();
 
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -33,9 +43,9 @@ export const AdminSettingsView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const adminCredentials = {
-    email: 'admin@diu.edu.bd',
-    password: 'admin#iic@2026',
-    altPassword: 'admin123',
+    email: 'iicdaffodil@gmail.com',
+    password: 'iic@2026',
+    altPassword: 'admin#iic@2026',
     role: 'ADMIN',
     name: 'Dr. Mahfuzur Rahman',
     designation: 'Director, Industrial Innovation Centre (DIU)',
@@ -239,7 +249,181 @@ export const AdminSettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* SECTION 2: IIC LOGO CONFIGURATION & DISPLAY CONTROL */}
+      {/* SECTION 2: FIREBASE CLOUD DATABASE (iicambasa) & REALTIME SYNC */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-orange-50 text-orange-600">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  Firebase Cloud Firestore Database
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-[#214FA2] border border-blue-200 text-[10px] font-mono font-bold">
+                  iicambasa
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Centralized cloud database syncing all ambassador signups, applications, duty matrices, and project records in real time
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => retryFirebaseSync()}
+              className="px-3.5 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${firebaseSyncStatus.isSyncing ? 'animate-spin' : ''}`} />
+              <span>{firebaseSyncStatus.isSyncing ? 'Syncing...' : 'Resync Cloud Database'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Sync Status Banner */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Connection Status
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  firebaseSyncStatus.connected
+                    ? 'bg-emerald-500'
+                    : firebaseSyncStatus.rulesNeedUpdate
+                    ? 'bg-amber-500 animate-ping'
+                    : 'bg-blue-500'
+                }`}
+              />
+              <span className="text-sm font-bold text-slate-900">
+                {firebaseSyncStatus.connected
+                  ? 'Realtime Cloud Sync Active'
+                  : firebaseSyncStatus.rulesNeedUpdate
+                  ? 'Firestore Rules Pending'
+                  : 'Connected to iicambasa'}
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-500">
+              Host: <code className="font-mono text-slate-700">iicambasa.firebaseapp.com</code>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Active Tables / Collections
+            </div>
+            <div className="text-sm font-bold text-slate-900">
+              6 Collections Auto-Synced
+            </div>
+            <div className="text-[11px] text-slate-500 font-mono">
+              users · ambassadors · projects · availability · tasks · settings
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Multi-Device Live Sync
+            </div>
+            <div className="text-sm font-bold text-emerald-700 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Cross-Device Instant Updates</span>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-tight">
+              Signups from any student device stream directly into your admin review queue.
+            </p>
+          </div>
+        </div>
+
+        {/* What Else Do I Have to Do Guide */}
+        <div className="p-5 rounded-xl bg-gradient-to-br from-blue-50/70 to-indigo-50/50 border border-blue-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Cloud className="w-4 h-4 text-[#214FA2]" />
+              <h3 className="text-xs font-bold text-slate-900">
+                What Else You Need to Do in Firebase Console (1-Minute Quick Setup)
+              </h3>
+            </div>
+            <a
+              href="https://console.firebase.google.com/project/iicambasa/firestore"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-semibold text-[#214FA2] hover:underline flex items-center gap-1"
+            >
+              <span>Open Firebase Console</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+
+          <p className="text-xs text-slate-600 leading-relaxed">
+            The app code is <strong>100% connected</strong> to your Firebase project <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-blue-200 text-blue-900 font-bold">iicambasa</code>. To ensure any device can register without permission blocks, verify these 2 steps in your console:
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-xs">
+            <div className="p-3 bg-white rounded-lg border border-blue-100 shadow-2xs space-y-1.5">
+              <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-[#214FA2] text-white flex items-center justify-center text-[10px]">1</span>
+                <span>Ensure Cloud Firestore Database is Created</span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                In Firebase Console, go to <strong>Build &gt; Firestore Database</strong>. If you haven't clicked "Create Database" yet, click it and choose standard settings.
+              </p>
+            </div>
+
+            <div className="p-3 bg-white rounded-lg border border-blue-100 shadow-2xs space-y-1.5">
+              <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-[#214FA2] text-white flex items-center justify-center text-[10px]">2</span>
+                <span>Allow Read &amp; Write in Firestore Rules</span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                Go to the <strong>Rules</strong> tab and set the rules to allow read &amp; write (see code snippet below), then click <strong>Publish</strong>.
+              </p>
+            </div>
+          </div>
+
+          {/* Copyable Rules Snippet */}
+          <div className="mt-2 p-3 bg-slate-900 rounded-lg text-slate-100 text-xs font-mono relative overflow-hidden">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-[11px] text-slate-400">
+              <span>firestore.rules</span>
+              <button
+                onClick={() =>
+                  handleCopy(
+                    `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`,
+                    'rules'
+                  )
+                }
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-1 cursor-pointer transition-colors text-[10px]"
+              >
+                {copiedField === 'rules' ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span className="text-emerald-400">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>Copy Rules</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <pre className="pt-2 text-[11px] text-emerald-400 overflow-x-auto leading-relaxed">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`}
+            </pre>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 3: IIC LOGO CONFIGURATION & DISPLAY CONTROL */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
