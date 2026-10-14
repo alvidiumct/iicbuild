@@ -18,6 +18,7 @@ import {
   Task,
   Announcement,
   TimeEntry,
+  ManualTimeRequest,
   IICLogoSettings,
 } from '../types';
 import {
@@ -57,51 +58,51 @@ export async function installAllFirebaseTables(options?: {
     const usersToSync = options?.users || INITIAL_USERS;
     usersToSync.forEach((u) => {
       const ref = doc(db, 'users', u.id);
-      batch.set(ref, {
+      batch.set(ref, sanitizeForFirestore({
         ...u,
         ...(u.role === 'ADMIN' ? { email: 'iicdaffodil@gmail.com', password: 'iic@2026' } : {}),
         updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      }), { merge: true });
       count++;
     });
 
     const ambassadorsToSync = options?.ambassadors || INITIAL_AMBASSADORS;
     ambassadorsToSync.forEach((a) => {
       const ref = doc(db, 'ambassadors', a.id);
-      batch.set(ref, {
+      batch.set(ref, sanitizeForFirestore({
         ...a,
         updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      }), { merge: true });
       count++;
     });
 
     const projectsToSync = options?.projects || INITIAL_PROJECTS;
     projectsToSync.forEach((p) => {
       const ref = doc(db, 'projects', p.id);
-      batch.set(ref, {
+      batch.set(ref, sanitizeForFirestore({
         ...p,
         updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      }), { merge: true });
       count++;
     });
 
     const availToSync = options?.availability || INITIAL_AVAILABILITY;
     availToSync.forEach((av) => {
       const ref = doc(db, 'availability', av.ambassadorId);
-      batch.set(ref, {
+      batch.set(ref, sanitizeForFirestore({
         ...av,
         updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      }), { merge: true });
       count++;
     });
 
     const tasksToSync = options?.tasks || INITIAL_TASKS;
     tasksToSync.forEach((t) => {
       const ref = doc(db, 'tasks', t.id);
-      batch.set(ref, {
+      batch.set(ref, sanitizeForFirestore({
         ...t,
         updatedAt: new Date().toISOString(),
-      }, { merge: true });
+      }), { merge: true });
       count++;
     });
 
@@ -151,48 +152,48 @@ export async function seedFirestoreIfEmpty(): Promise<{ seeded: boolean; error?:
       // Seed Users
       INITIAL_USERS.forEach((u) => {
         const ref = doc(db, 'users', u.id);
-        batch.set(ref, {
+        batch.set(ref, sanitizeForFirestore({
           ...u,
           // ensure admin has the updated credentials
           ...(u.role === 'ADMIN' ? { email: 'iicdaffodil@gmail.com', password: 'iic@2026' } : {}),
           syncedAt: new Date().toISOString(),
-        });
+        }));
       });
 
       // Seed Ambassadors
       INITIAL_AMBASSADORS.forEach((a) => {
         const ref = doc(db, 'ambassadors', a.id);
-        batch.set(ref, {
+        batch.set(ref, sanitizeForFirestore({
           ...a,
           syncedAt: new Date().toISOString(),
-        });
+        }));
       });
 
       // Seed 5 Official Projects
       INITIAL_PROJECTS.forEach((p) => {
         const ref = doc(db, 'projects', p.id);
-        batch.set(ref, {
+        batch.set(ref, sanitizeForFirestore({
           ...p,
           syncedAt: new Date().toISOString(),
-        });
+        }));
       });
 
       // Seed Availability
       INITIAL_AVAILABILITY.forEach((av) => {
         const ref = doc(db, 'availability', av.ambassadorId);
-        batch.set(ref, {
+        batch.set(ref, sanitizeForFirestore({
           ...av,
           syncedAt: new Date().toISOString(),
-        });
+        }));
       });
 
       // Seed Tasks
       INITIAL_TASKS.forEach((t) => {
         const ref = doc(db, 'tasks', t.id);
-        batch.set(ref, {
+        batch.set(ref, sanitizeForFirestore({
           ...t,
           syncedAt: new Date().toISOString(),
-        });
+        }));
       });
 
       // Seed Default Branding
@@ -327,16 +328,54 @@ export function subscribeToTasks(
   return onSnapshot(
     collection(db, 'tasks'),
     (snapshot) => {
-      if (!snapshot.empty) {
-        const list: Task[] = [];
-        snapshot.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...(docSnap.data() as any) });
-        });
-        onData(list);
-      }
+      const list: Task[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      onData(list);
     },
     (err) => {
       console.warn('[Firebase] Tasks subscription warning:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export function subscribeToTimeEntries(
+  onData: (entries: TimeEntry[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  return onSnapshot(
+    collection(db, 'time_entries'),
+    (snapshot) => {
+      const list: TimeEntry[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      onData(list);
+    },
+    (err) => {
+      console.warn('[Firebase] Time entries subscription warning:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export function subscribeToManualTimeRequests(
+  onData: (requests: ManualTimeRequest[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  return onSnapshot(
+    collection(db, 'manual_time_requests'),
+    (snapshot) => {
+      const list: ManualTimeRequest[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...(docSnap.data() as any) });
+      });
+      onData(list);
+    },
+    (err) => {
+      console.warn('[Firebase] Manual time requests subscription warning:', err);
       if (onError) onError(err);
     }
   );
@@ -507,6 +546,8 @@ export async function fetchAllCloudData(): Promise<{
   projects: IICProject[];
   tasks: Task[];
   availability: AmbassadorAvailability[];
+  timeEntries: TimeEntry[];
+  manualTimeRequests: ManualTimeRequest[];
   settings?: IICLogoSettings;
 }> {
   try {
@@ -515,6 +556,8 @@ export async function fetchAllCloudData(): Promise<{
     const projSnap = await getDocs(collection(db, 'projects'));
     const taskSnap = await getDocs(collection(db, 'tasks'));
     const availSnap = await getDocs(collection(db, 'availability'));
+    const timeSnap = await getDocs(collection(db, 'time_entries'));
+    const manualSnap = await getDocs(collection(db, 'manual_time_requests'));
 
     const users: User[] = [];
     usersSnap.forEach((d) => users.push({ id: d.id, ...(d.data() as any) }));
@@ -531,17 +574,24 @@ export async function fetchAllCloudData(): Promise<{
     const availability: AmbassadorAvailability[] = [];
     availSnap.forEach((d) => availability.push({ ambassadorId: d.id, ...(d.data() as any) }));
 
-    return { users, ambassadors, projects, tasks, availability };
+    const timeEntries: TimeEntry[] = [];
+    timeSnap.forEach((d) => timeEntries.push({ id: d.id, ...(d.data() as any) }));
+
+    const manualTimeRequests: ManualTimeRequest[] = [];
+    manualSnap.forEach((d) => manualTimeRequests.push({ id: d.id, ...(d.data() as any) }));
+
+    return { users, ambassadors, projects, tasks, availability, timeEntries, manualTimeRequests };
   } catch (err) {
     console.warn('[Firebase] fetchAllCloudData warning:', err);
-    return { users: [], ambassadors: [], projects: [], tasks: [], availability: [] };
+    return { users: [], ambassadors: [], projects: [], tasks: [], availability: [], timeEntries: [], manualTimeRequests: [] };
   }
 }
 
 export async function syncAvailabilityToFirestore(av: AmbassadorAvailability): Promise<void> {
   try {
-    await setDoc(doc(db, 'availability', av.ambassadorId), {
-      ...av,
+    const sanitized = sanitizeForFirestore(av);
+    await setDoc(doc(db, 'availability', sanitized.ambassadorId), {
+      ...sanitized,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
   } catch (err) {
@@ -549,32 +599,75 @@ export async function syncAvailabilityToFirestore(av: AmbassadorAvailability): P
   }
 }
 
-export async function syncProjectToFirestore(project: IICProject): Promise<void> {
+export async function syncProjectToFirestore(project: IICProject): Promise<{ success: boolean; error?: string }> {
   try {
-    await setDoc(doc(db, 'projects', project.id), {
-      ...project,
+    const sanitized = sanitizeForFirestore(project);
+    await setDoc(doc(db, 'projects', sanitized.id), {
+      ...sanitized,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
-  } catch (err) {
-    console.warn('[Firebase] Failed to write project to Firestore:', err);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Firebase] Failed to write project to Firestore:', err);
+    return { success: false, error: err?.message };
   }
 }
 
-export async function syncTaskToFirestore(task: Task): Promise<void> {
+export async function syncTaskToFirestore(task: Task): Promise<{ success: boolean; error?: string }> {
   try {
-    await setDoc(doc(db, 'tasks', task.id), {
-      ...task,
+    const sanitized = sanitizeForFirestore(task);
+    await setDoc(doc(db, 'tasks', sanitized.id), {
+      ...sanitized,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Firebase] Failed to write task to Firestore:', err);
+    return { success: false, error: err?.message };
+  }
+}
+
+export async function deleteTaskFromFirestore(taskId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'tasks', taskId));
   } catch (err) {
-    console.warn('[Firebase] Failed to write task to Firestore:', err);
+    console.warn('[Firebase] Failed to delete task from Firestore:', err);
+  }
+}
+
+export async function syncTimeEntryToFirestore(entry: TimeEntry): Promise<{ success: boolean; error?: string }> {
+  try {
+    const sanitized = sanitizeForFirestore(entry);
+    await setDoc(doc(db, 'time_entries', sanitized.id), {
+      ...sanitized,
+      syncedAt: new Date().toISOString(),
+    }, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    console.warn('[Firebase] Failed to write time entry to Firestore:', err);
+    return { success: false, error: err?.message };
+  }
+}
+
+export async function syncManualTimeRequestToFirestore(request: ManualTimeRequest): Promise<{ success: boolean; error?: string }> {
+  try {
+    const sanitized = sanitizeForFirestore(request);
+    await setDoc(doc(db, 'manual_time_requests', sanitized.id), {
+      ...sanitized,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    console.warn('[Firebase] Failed to write manual time request to Firestore:', err);
+    return { success: false, error: err?.message };
   }
 }
 
 export async function syncSettingsToFirestore(settings: IICLogoSettings): Promise<void> {
   try {
+    const sanitized = sanitizeForFirestore(settings);
     await setDoc(doc(db, 'settings', 'branding'), {
-      ...settings,
+      ...sanitized,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
   } catch (err) {
@@ -584,8 +677,9 @@ export async function syncSettingsToFirestore(settings: IICLogoSettings): Promis
 
 export async function syncAuditLogToFirestore(log: any): Promise<void> {
   try {
-    await setDoc(doc(db, 'audit_logs', log.id), {
-      ...log,
+    const sanitized = sanitizeForFirestore(log);
+    await setDoc(doc(db, 'audit_logs', sanitized.id), {
+      ...sanitized,
       createdAt: new Date().toISOString(),
     }, { merge: true });
   } catch (err) {

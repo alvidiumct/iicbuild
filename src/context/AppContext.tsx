@@ -46,6 +46,8 @@ import {
   subscribeToAvailability,
   subscribeToTasks,
   subscribeToSettings,
+  subscribeToTimeEntries,
+  subscribeToManualTimeRequests,
   syncUserToFirestore,
   syncAmbassadorToFirestore,
   syncAmbassadorRegistration,
@@ -55,6 +57,9 @@ import {
   syncAvailabilityToFirestore,
   syncProjectToFirestore,
   syncTaskToFirestore,
+  deleteTaskFromFirestore,
+  syncTimeEntryToFirestore,
+  syncManualTimeRequestToFirestore,
   syncSettingsToFirestore,
   syncAuditLogToFirestore,
   FirebaseSyncStatus,
@@ -653,6 +658,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (data.projects.length > 0) setProjects(data.projects);
       if (data.tasks.length > 0) setTasks(data.tasks);
       if (data.availability.length > 0) setAvailabilityList(data.availability);
+      if (data.timeEntries && data.timeEntries.length > 0) setTimeEntries(data.timeEntries);
+      if (data.manualTimeRequests && data.manualTimeRequests.length > 0) setManualTimeRequests(data.manualTimeRequests);
       if (data.settings) setLogoSettings(data.settings);
 
       setFirebaseSyncStatus({
@@ -877,13 +884,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         });
 
+        const unsubTimeEntries = subscribeToTimeEntries((cloudEntries) => {
+          if (cloudEntries && cloudEntries.length > 0) {
+            setTimeEntries((prev) => {
+              const cloudIds = new Set(cloudEntries.map((e) => e.id));
+              const localOnly = prev.filter((e) => !cloudIds.has(e.id));
+              return [...cloudEntries, ...localOnly];
+            });
+          }
+        });
+
+        const unsubManualTime = subscribeToManualTimeRequests((cloudRequests) => {
+          if (cloudRequests && cloudRequests.length > 0) {
+            setManualTimeRequests((prev) => {
+              const cloudIds = new Set(cloudRequests.map((r) => r.id));
+              const localOnly = prev.filter((r) => !cloudIds.has(r.id));
+              return [...cloudRequests, ...localOnly];
+            });
+          }
+        });
+
         const unsubSettings = subscribeToSettings((cloudSettings) => {
           if (cloudSettings) {
             setLogoSettings(cloudSettings);
           }
         });
 
-        unsubs = [unsubUsers, unsubAmb, unsubProj, unsubAvail, unsubTasks, unsubSettings];
+        unsubs = [
+          unsubUsers,
+          unsubAmb,
+          unsubProj,
+          unsubAvail,
+          unsubTasks,
+          unsubTimeEntries,
+          unsubManualTime,
+          unsubSettings,
+        ];
       } catch (err: any) {
         console.warn('[Firebase] Cloud initialization warning:', err);
         setFirebaseSyncStatus((prev) => ({
@@ -1964,26 +2000,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Automatically update task status to 'In Progress' if 'Assigned' or 'Accepted'
       if (targetTask.status === 'Assigned' || targetTask.status === 'Accepted') {
+        const updatedTaskObj: Task = {
+          ...targetTask,
+          status: 'In Progress',
+          auditTrail: [
+            ...targetTask.auditTrail,
+            {
+              id: `aud-${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              actorName: currentUser.name,
+              actorRole: currentUser.role,
+              action: 'Punch In (Timer Started)',
+            },
+          ],
+        };
         setTasks((prev) =>
-          prev.map((t) =>
-            t.id === taskId
-              ? {
-                  ...t,
-                  status: 'In Progress',
-                  auditTrail: [
-                    ...t.auditTrail,
-                    {
-                      id: `aud-${Date.now()}`,
-                      timestamp: new Date().toISOString(),
-                      actorName: currentUser.name,
-                      actorRole: currentUser.role,
-                      action: 'Punch In (Timer Started)',
-                    },
-                  ],
-                }
-              : t
-          )
+          prev.map((t) => (t.id === taskId ? updatedTaskObj : t))
         );
+        syncTaskToFirestore(updatedTaskObj);
       }
 
       logAudit('Punch In', `Started active timer on task "${targetTask.title}"`);
@@ -2050,29 +2084,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       setTimeEntries((prev) => [newEntry, ...prev]);
+      syncTimeEntryToFirestore(newEntry);
 
       // Update Task actualHours
+      let updatedTaskObj: Task | undefined;
       setTasks((prev) =>
-        prev.map((t) =>
-          t.id === activeTimer.taskId
-            ? {
-                ...t,
-                actualHours: Number((t.actualHours + hoursLogged).toFixed(2)),
-                auditTrail: [
-                  ...t.auditTrail,
-                  {
-                    id: `aud-${Date.now()}`,
-                    timestamp: new Date().toISOString(),
-                    actorName: currentAmb.fullName,
-                    actorRole: 'AMBASSADOR',
-                    action: `Punch Out (${hoursLogged}h logged)`,
-                    note: notes,
-                  },
-                ],
-              }
-            : t
-        )
+        prev.map((t) => {
+          if (t.id === activeTimer.taskId) {
+            const updated: Task = {
+              ...t,
+              actualHours: Number((t.actualHours + hoursLogged).toFixed(2)),
+              auditTrail: [
+                ...t.auditTrail,
+                {
+                  id: `aud-${Date.now()}`,
+                  timestamp: new Date().toISOString(),
+                  actorName: currentAmb.fullName,
+                  actorRole: 'AMBASSADOR',
+                  action: `Punch Out (${hoursLogged}h logged)`,
+                  note: notes,
+                },
+              ],
+            };
+            updatedTaskObj = updated;
+            return updated;
+          }
+          return t;
+        })
       );
+
+      if (updatedTaskObj) {
+        syncTaskToFirestore(updatedTaskObj);
+      }
 
       logAudit(
         'Punch Out',
@@ -2121,6 +2164,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       setTasks((prev) => [newTask, ...prev]);
+      syncTaskToFirestore(newTask);
 
       // Dispatch notifications to assigned ambassadors
       if (data.assignedAmbassadorIds) {
@@ -2143,10 +2187,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Update Task Status
   const updateTaskStatus = useCallback(
     (taskId: string, newStatus: TaskStatus, note?: string) => {
+      let updatedTaskObj: Task | undefined;
       setTasks((prev) =>
         prev.map((t) => {
           if (t.id !== taskId) return t;
-          return {
+          const updated: Task = {
             ...t,
             status: newStatus,
             auditTrail: [
@@ -2161,8 +2206,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               },
             ],
           };
+          updatedTaskObj = updated;
+          return updated;
         })
       );
+      if (updatedTaskObj) {
+        syncTaskToFirestore(updatedTaskObj);
+      }
       logAudit('Task Status Updated', `Task ${taskId} status changed to ${newStatus}`);
     },
     [currentUser, logAudit]
@@ -2171,10 +2221,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Update Full Task Details (Admin)
   const updateTask = useCallback(
     (taskId: string, updates: Partial<Task>) => {
+      let updatedTaskObj: Task | undefined;
       setTasks((prev) =>
         prev.map((t) => {
           if (t.id !== taskId) return t;
-          return {
+          const updated: Task = {
             ...t,
             ...updates,
             auditTrail: [
@@ -2189,8 +2240,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               },
             ],
           };
+          updatedTaskObj = updated;
+          return updated;
         })
       );
+      if (updatedTaskObj) {
+        syncTaskToFirestore(updatedTaskObj);
+      }
       logAudit('Task Updated', `Task "${taskId}" modified by ${currentUser.name}`);
     },
     [currentUser, logAudit]
@@ -2203,10 +2259,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       submission: { notes: string; deliverableLinks?: string[]; files?: string[] }
     ) => {
       const currentAmb = currentAmbassador || ambassadors[0];
+      let updatedTaskObj: Task | undefined;
       setTasks((prev) =>
         prev.map((t) => {
           if (t.id !== taskId) return t;
-          return {
+          const updated: Task = {
             ...t,
             status: 'Submitted',
             submission: {
@@ -2229,8 +2286,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               },
             ],
           };
+          updatedTaskObj = updated;
+          return updated;
         })
       );
+
+      if (updatedTaskObj) {
+        syncTaskToFirestore(updatedTaskObj);
+      }
 
       // Notify admin
       dispatchNotification({
@@ -2249,11 +2312,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const reviewTask = useCallback(
     (taskId: string, approved: boolean, reviewNotes: string) => {
       const newStatus: TaskStatus = approved ? 'Completed' : 'Revision Required';
+      let updatedTaskObj: Task | undefined;
 
       setTasks((prev) =>
         prev.map((t) => {
           if (t.id !== taskId) return t;
-          return {
+          const updated: Task = {
             ...t,
             status: newStatus,
             reviewNotes,
@@ -2271,8 +2335,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               },
             ],
           };
+          updatedTaskObj = updated;
+          return updated;
         })
       );
+
+      if (updatedTaskObj) {
+        syncTaskToFirestore(updatedTaskObj);
+      }
 
       const targetTask = tasks.find((t) => t.id === taskId);
       if (targetTask && targetTask.assignedAmbassadorIds) {
@@ -2297,6 +2367,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteTask = useCallback(
     (taskId: string) => {
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      deleteTaskFromFirestore(taskId);
       logAudit('Task Deleted', `Task ${taskId} was deleted`);
     },
     [logAudit]
@@ -2351,6 +2422,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       setTasks((prev) => [newTask, ...prev]);
+      syncTaskToFirestore(newTask);
 
       dispatchNotification({
         recipientId: 'all',
@@ -2367,11 +2439,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Bulk Assign Tasks
   const bulkAssignTasks = useCallback(
     (taskIds: string[], ambassadorIds: string[]) => {
+      const modifiedTasks: Task[] = [];
       setTasks((prev) =>
         prev.map((t) => {
           if (!taskIds.includes(t.id)) return t;
           const merged = Array.from(new Set([...t.assignedAmbassadorIds, ...ambassadorIds]));
-          return {
+          const updated: Task = {
             ...t,
             assignedAmbassadorIds: merged,
             auditTrail: [
@@ -2386,8 +2459,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               },
             ],
           };
+          modifiedTasks.push(updated);
+          return updated;
         })
       );
+      modifiedTasks.forEach((t) => syncTaskToFirestore(t));
       logAudit('Bulk Tasks Assigned', `Reassigned ${taskIds.length} tasks to ${ambassadorIds.length} ambassadors`);
     },
     [currentUser, logAudit]
@@ -2421,6 +2497,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       setManualTimeRequests((prev) => [newReq, ...prev]);
+      syncManualTimeRequestToFirestore(newReq);
 
       dispatchNotification({
         recipientId: 'all',
@@ -2441,20 +2518,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!req) return;
 
       const newStatus = approved ? 'Approved' : 'Rejected';
+      let updatedReqObj: ManualTimeRequest | undefined;
 
       setManualTimeRequests((prev) =>
-        prev.map((r) =>
-          r.id === requestId
-            ? {
-                ...r,
-                status: newStatus,
-                reviewedAt: new Date().toISOString(),
-                reviewedBy: currentUser.name,
-                adminFeedback: feedback,
-              }
-            : r
-        )
+        prev.map((r) => {
+          if (r.id === requestId) {
+            const updated = {
+              ...r,
+              status: newStatus as 'Approved' | 'Rejected',
+              reviewedAt: new Date().toISOString(),
+              reviewedBy: currentUser.name,
+              adminFeedback: feedback,
+            };
+            updatedReqObj = updated;
+            return updated;
+          }
+          return r;
+        })
       );
+
+      if (updatedReqObj) {
+        syncManualTimeRequestToFirestore(updatedReqObj);
+      }
 
       // If approved, create approved TimeEntry and add actualHours to task
       if (approved) {
@@ -2475,17 +2560,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           notes: `Manual Time Approved by ${currentUser.name}: ${req.reason}`,
         };
         setTimeEntries((prev) => [newEntry, ...prev]);
+        syncTimeEntryToFirestore(newEntry);
 
+        let updatedTaskObj: Task | undefined;
         setTasks((prev) =>
-          prev.map((t) =>
-            t.id === req.taskId
-              ? {
-                  ...t,
-                  actualHours: Number((t.actualHours + req.durationHours).toFixed(2)),
-                }
-              : t
-          )
+          prev.map((t) => {
+            if (t.id === req.taskId) {
+              const updated = {
+                ...t,
+                actualHours: Number((t.actualHours + req.durationHours).toFixed(2)),
+              };
+              updatedTaskObj = updated;
+              return updated;
+            }
+            return t;
+          })
         );
+        if (updatedTaskObj) {
+          syncTaskToFirestore(updatedTaskObj);
+        }
       }
 
       dispatchNotification({
@@ -2611,6 +2704,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         documents: data.documents || [],
       };
       setProjects((prev) => [newProj, ...prev]);
+      syncProjectToFirestore(newProj);
       logAudit('Project Created', `Created project "${newProj.title}"`);
     },
     [currentUser, logAudit]
@@ -2618,7 +2712,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateProject = useCallback(
     (id: string, updates: Partial<IICProject>) => {
-      setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+      let updatedProj: IICProject | undefined;
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id !== id) return p;
+          const target = { ...p, ...updates };
+          updatedProj = target;
+          return target;
+        })
+      );
+      if (updatedProj) {
+        syncProjectToFirestore(updatedProj);
+      }
       logAudit('Project Updated', `Updated project ${id}`);
     },
     [logAudit]
@@ -2626,13 +2731,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const assignAmbassadorToProject = useCallback(
     (projectId: string, ambassadorId: string) => {
+      let updatedProj: IICProject | undefined;
       setProjects((prev) =>
         prev.map((p) => {
           if (p.id !== projectId) return p;
           if (p.connectedAmbassadorIds.includes(ambassadorId)) return p;
-          return { ...p, connectedAmbassadorIds: [...p.connectedAmbassadorIds, ambassadorId] };
+          const target = { ...p, connectedAmbassadorIds: [...p.connectedAmbassadorIds, ambassadorId] };
+          updatedProj = target;
+          return target;
         })
       );
+      if (updatedProj) {
+        syncProjectToFirestore(updatedProj);
+      }
       logAudit('Ambassador Assigned to Project', `Assigned ambassador ${ambassadorId} to project ${projectId}`);
     },
     [logAudit]
@@ -2640,15 +2751,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const removeAmbassadorFromProject = useCallback(
     (projectId: string, ambassadorId: string) => {
+      let updatedProj: IICProject | undefined;
       setProjects((prev) =>
         prev.map((p) => {
           if (p.id !== projectId) return p;
-          return {
+          const target = {
             ...p,
             connectedAmbassadorIds: p.connectedAmbassadorIds.filter((id) => id !== ambassadorId),
           };
+          updatedProj = target;
+          return target;
         })
       );
+      if (updatedProj) {
+        syncProjectToFirestore(updatedProj);
+      }
       logAudit('Ambassador Removed from Project', `Removed ambassador ${ambassadorId} from project ${projectId}`);
     },
     [logAudit]

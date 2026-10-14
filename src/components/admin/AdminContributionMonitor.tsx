@@ -12,6 +12,7 @@ import {
   X,
   ChevronRight,
   TrendingUp,
+  RefreshCw,
 } from 'lucide-react';
 
 export const AdminContributionMonitor: React.FC = () => {
@@ -26,12 +27,20 @@ export const AdminContributionMonitor: React.FC = () => {
     getOverallMetrics,
     setSelectedAmbassadorId,
     setActiveView,
+    refreshFromFirestore,
   } = useApp();
 
   const [selectedDept, setSelectedDept] = useState('All');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<'hours' | 'tasks' | 'name'>('hours');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshFromFirestore();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   // Pending manual time requests
   const pendingRequests = manualTimeRequests.filter((r) => r.status === 'Pending');
@@ -159,13 +168,24 @@ export const AdminContributionMonitor: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleExportCSV}
-          className="px-3.5 py-2 text-xs font-semibold text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
-        >
-          <Download className="w-4 h-4" />
-          <span>Export Scorecard CSV</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
+            title="Sync latest records from cloud database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isRefreshing ? 'animate-spin text-[#214FA2]' : ''}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Cloud'}</span>
+          </button>
+          <button
+            onClick={handleExportCSV}
+            className="px-3.5 py-2 text-xs font-semibold text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export Scorecard CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* 4 SUMMARY STAT CARDS */}

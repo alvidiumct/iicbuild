@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Task, TaskPriority, TaskCategory, TaskStatus, AmbassadorProfile } from '../../types';
 import {
@@ -20,6 +20,7 @@ import {
   Edit2,
   AlertTriangle,
   UserCheck,
+  RefreshCw,
 } from 'lucide-react';
 
 interface AmbassadorSelectorProps {
@@ -173,6 +174,8 @@ export const AdminTaskBoard: React.FC = () => {
     deleteTask,
     selectedTaskId,
     setSelectedTaskId,
+    refreshFromFirestore,
+    firebaseSyncStatus,
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban');
@@ -180,6 +183,13 @@ export const AdminTaskBoard: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshFromFirestore();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   // Create Task Modal state
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -318,6 +328,21 @@ export const AdminTaskBoard: React.FC = () => {
     setReviewModalTask(null);
   };
 
+  // Auto-open review or details modal if navigated with selectedTaskId from Dashboard
+  useEffect(() => {
+    if (selectedTaskId) {
+      const target = tasks.find((t) => t.id === selectedTaskId);
+      if (target) {
+        if (target.status === 'Submitted' || target.status === 'Under Review') {
+          setReviewModalTask(target);
+        } else {
+          handleOpenEditTask(target);
+        }
+      }
+      setSelectedTaskId(null);
+    }
+  }, [selectedTaskId, tasks, setSelectedTaskId]);
+
   // Kanban columns definition
   const KANBAN_COLS: { title: string; statuses: TaskStatus[]; color: string }[] = [
     { title: 'Assigned', statuses: ['Assigned'], color: 'border-slate-300' },
@@ -384,15 +409,25 @@ export const AdminTaskBoard: React.FC = () => {
             </button>
           </div>
 
-          <button
-            onClick={() => setCreateModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#214FA2] hover:bg-[#1a3f85] rounded-xl shadow-xs transition-colors shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Assign New Task</span>
-          </button>
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
+              title="Sync latest tasks from cloud Firestore"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isRefreshing ? 'animate-spin text-[#214FA2]' : ''}`} />
+              <span className="hidden sm:inline">{isRefreshing ? 'Syncing...' : 'Sync Cloud'}</span>
+            </button>
+
+            <button
+              onClick={() => setCreateModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#214FA2] hover:bg-[#1a3f85] rounded-xl shadow-xs transition-colors shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Assign New Task</span>
+            </button>
+          </div>
         </div>
-      </div>
 
       {/* Filter and Search Bar */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">

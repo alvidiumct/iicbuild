@@ -17,6 +17,7 @@ import {
   History,
   ChevronRight,
   MessageSquare,
+  RefreshCw,
 } from 'lucide-react';
 
 export const MyTasksView: React.FC = () => {
@@ -30,11 +31,19 @@ export const MyTasksView: React.FC = () => {
     createCustomTask,
     selectedTaskId,
     setSelectedTaskId,
+    refreshFromFirestore,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshFromFirestore();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
 
   // Modals state
   const [submissionModalTaskId, setSubmissionModalTaskId] = useState<string | null>(null);
@@ -136,6 +145,15 @@ export const MyTasksView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
+            title="Sync latest tasks from cloud Firestore"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isRefreshing ? 'animate-spin text-[#214FA2]' : ''}`} />
+            <span className="hidden sm:inline">{isRefreshing ? 'Syncing...' : 'Sync Cloud'}</span>
+          </button>
           <button
             onClick={() => setCustomTaskModalOpen(true)}
             className="px-3.5 py-2 text-xs font-semibold text-[#214FA2] bg-white border border-[#214FA2]/30 hover:bg-[#214FA2]/5 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
