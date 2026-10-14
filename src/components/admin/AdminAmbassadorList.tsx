@@ -21,6 +21,8 @@ import {
   Copy,
   Sparkles,
   ShieldCheck,
+  Clock,
+  ArrowRight,
 } from 'lucide-react';
 import { BulkAmbassadorModal } from './BulkAmbassadorModal';
 import { DIU_DEPARTMENTS } from '../../data/departments';
@@ -37,11 +39,24 @@ export const AdminAmbassadorList: React.FC = () => {
     setSelectedAmbassadorId,
     setActiveView,
     openProfileEdit,
+    approveAmbassadorApplication,
+    pendingApplicationsCount,
+    refreshFromFirestore,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshFromFirestore();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Bulk Ambassador Modal State
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
@@ -79,12 +94,14 @@ export const AdminAmbassadorList: React.FC = () => {
   };
 
   const filteredAmbassadors = ambassadors.filter((amb) => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      amb.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      amb.ambassadorId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      amb.email.toLowerCase().includes(searchQuery.toLowerCase());
+      (amb.fullName || '').toLowerCase().includes(q) ||
+      (amb.ambassadorId || '').toLowerCase().includes(q) ||
+      (amb.email || '').toLowerCase().includes(q) ||
+      (amb.studentId ? amb.studentId.toLowerCase().includes(q) : false);
 
-    const matchesDept = departmentFilter === 'All' ? true : amb.department.includes(departmentFilter);
+    const matchesDept = departmentFilter === 'All' ? true : (amb.department || '').includes(departmentFilter);
     const matchesStatus = statusFilter === 'All' ? true : amb.status === statusFilter;
 
     return matchesSearch && matchesDept && matchesStatus;
@@ -153,8 +170,18 @@ export const AdminAmbassadorList: React.FC = () => {
 
         <div className="flex items-center gap-2.5">
           <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
+            title="Fetch latest registrations from cloud database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isRefreshing ? 'animate-spin text-[#214FA2]' : ''}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Cloud'}</span>
+          </button>
+
+          <button
             onClick={() => setBulkModalOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold text-[#214FA2] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs"
+            className="px-3.5 py-2 text-xs font-semibold text-[#214FA2] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4 text-[#214FA2]" />
             <span>Bulk Onboard (Table)</span>
@@ -165,13 +192,99 @@ export const AdminAmbassadorList: React.FC = () => {
               generateRandomPassword();
               setAddModalOpen(true);
             }}
-            className="px-3.5 py-2 text-xs font-semibold text-white bg-[#214FA2] hover:bg-[#1a3f85] rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+            className="px-3.5 py-2 text-xs font-semibold text-white bg-[#214FA2] hover:bg-[#1a3f85] rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <UserPlus className="w-4 h-4" />
             <span>Onboard Ambassador</span>
           </button>
         </div>
       </div>
+
+      {/* QUICK STATUS TABS */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <button
+          onClick={() => setStatusFilter('All')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+            statusFilter === 'All'
+              ? 'bg-[#214FA2] text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <span>All Ambassadors</span>
+          <span className="font-mono text-[11px] px-1.5 py-0.2 rounded-full bg-black/10">
+            {ambassadors.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setStatusFilter('Pending')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+            statusFilter === 'Pending'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-white text-amber-800 hover:bg-amber-50 border border-amber-200'
+          }`}
+        >
+          <Clock className="w-3.5 h-3.5" />
+          <span>Pending Applications</span>
+          <span className={`font-mono text-[11px] px-1.5 py-0.2 rounded-full font-bold ${
+            statusFilter === 'Pending' ? 'bg-amber-800 text-white' : 'bg-amber-100 text-amber-900'
+          }`}>
+            {ambassadors.filter((a) => a.status === 'Pending').length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setStatusFilter('Active')}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
+            statusFilter === 'Active'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-white text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
+          }`}
+        >
+          <CheckCircle className="w-3.5 h-3.5" />
+          <span>Active Roster</span>
+          <span className={`font-mono text-[11px] px-1.5 py-0.2 rounded-full font-bold ${
+            statusFilter === 'Active' ? 'bg-emerald-800 text-white' : 'bg-emerald-100 text-emerald-900'
+          }`}>
+            {ambassadors.filter((a) => a.status === 'Active').length}
+          </span>
+        </button>
+      </div>
+
+      {/* PENDING APPLICATIONS ALERT BANNER */}
+      {pendingApplicationsCount > 0 && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                <span>{pendingApplicationsCount} Pending Application{pendingApplicationsCount > 1 ? 's' : ''} Awaiting Cohort Approval</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold">New Registrations</span>
+              </div>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                Student ambassadors have submitted registration profiles. Filter by "Pending Approval" or approve directly from the table.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setStatusFilter('Pending')}
+              className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-800 text-xs font-semibold hover:bg-amber-100 transition-colors cursor-pointer"
+            >
+              Filter Pending ({pendingApplicationsCount})
+            </button>
+            <button
+              onClick={() => setActiveView('admin-users')}
+              className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>User Management</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 text-xs">
@@ -286,27 +399,45 @@ export const AdminAmbassadorList: React.FC = () => {
                     <td className="p-3.5 font-mono text-slate-700">{overall.toFixed(1)} Hours</td>
 
                     <td className="p-3.5">
-                      <select
-                        value={amb.status}
-                        onChange={(e) =>
-                          updateAmbassadorStatus(amb.id, e.target.value as AmbassadorStatus)
-                        }
-                        className={`text-[11px] font-bold p-1 rounded border focus:outline-hidden ${
-                          amb.status === 'Active'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : amb.status === 'Suspended'
-                            ? 'bg-red-50 text-red-800 border-red-200'
-                            : 'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}
-                      >
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                        <option value="Suspended">Suspended</option>
-                        <option value="Completed Tenure">Completed Tenure</option>
-                      </select>
+                      {amb.status === 'Pending' ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                          <Clock className="w-3 h-3 text-amber-600" />
+                          Pending Approval
+                        </span>
+                      ) : (
+                        <select
+                          value={amb.status}
+                          onChange={(e) =>
+                            updateAmbassadorStatus(amb.id, e.target.value as AmbassadorStatus)
+                          }
+                          className={`text-[11px] font-bold p-1 rounded border focus:outline-hidden ${
+                            amb.status === 'Active'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : amb.status === 'Suspended'
+                              ? 'bg-red-50 text-red-800 border-red-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          <option value="Active">Active</option>
+                          <option value="Pending">Pending Approval</option>
+                          <option value="Inactive">Inactive</option>
+                          <option value="Suspended">Suspended</option>
+                          <option value="Completed Tenure">Completed Tenure</option>
+                        </select>
+                      )}
                     </td>
 
                     <td className="p-3.5 text-right space-x-2">
+                      {amb.status === 'Pending' && (
+                        <button
+                          onClick={() => approveAmbassadorApplication(amb.userId || amb.id)}
+                          className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-2xs inline-flex items-center gap-1 transition-colors cursor-pointer mr-1"
+                          title="Approve Ambassador Application"
+                        >
+                          <Check className="w-3 h-3" />
+                          <span>Approve</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => openProfileEdit(amb.userId || amb.id)}
                         className="text-xs font-semibold text-slate-600 hover:text-[#214FA2] inline-flex items-center gap-1 p-1 hover:bg-slate-100 rounded transition-colors"

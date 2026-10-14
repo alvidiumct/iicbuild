@@ -34,13 +34,34 @@ export const AdminSettingsView: React.FC = () => {
     currentUser,
     firebaseSyncStatus,
     retryFirebaseSync,
+    pushAllDataToFirebase,
   } = useApp();
 
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [customUrlInput, setCustomUrlInput] = useState<string>('');
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isPushingTables, setIsPushingTables] = useState<boolean>(false);
+  const [pushFeedback, setPushFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePushAllTables = async () => {
+    setIsPushingTables(true);
+    setPushFeedback(null);
+    const res = await pushAllDataToFirebase();
+    setIsPushingTables(false);
+    if (res.success) {
+      setPushFeedback({
+        success: true,
+        message: `Successfully installed and synced ${res.count} documents to Firebase iicambasa Firestore! All tables (users, ambassadors, projects, availability, tasks, announcements, branding) are now active in the cloud.`,
+      });
+    } else {
+      setPushFeedback({
+        success: false,
+        message: res.error || 'Failed to sync tables. Check Firestore Rules in Firebase console.',
+      });
+    }
+  };
 
   const adminCredentials = {
     email: 'iicdaffodil@gmail.com',
@@ -271,16 +292,44 @@ export const AdminSettingsView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handlePushAllTables}
+              disabled={isPushingTables}
+              className="px-3.5 py-1.5 rounded-lg bg-[#214FA2] hover:bg-[#1a3f85] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60 shadow-xs"
+            >
+              <Database className={`w-3.5 h-3.5 ${isPushingTables ? 'animate-spin' : ''}`} />
+              <span>{isPushingTables ? 'Pushing All Tables...' : 'Push All Data to Firebase'}</span>
+            </button>
+
             <button
               onClick={() => retryFirebaseSync()}
-              className="px-3.5 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              disabled={firebaseSyncStatus.isSyncing}
+              className="px-3.5 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${firebaseSyncStatus.isSyncing ? 'animate-spin' : ''}`} />
               <span>{firebaseSyncStatus.isSyncing ? 'Syncing...' : 'Resync Cloud Database'}</span>
             </button>
           </div>
         </div>
+
+        {/* Push Feedback Banner */}
+        {pushFeedback && (
+          <div
+            className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs animate-in fade-in ${
+              pushFeedback.success
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-red-50 border-red-200 text-red-900'
+            }`}
+          >
+            {pushFeedback.success ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            )}
+            <div className="flex-1 font-medium">{pushFeedback.message}</div>
+          </div>
+        )}
 
         {/* Sync Status Banner */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

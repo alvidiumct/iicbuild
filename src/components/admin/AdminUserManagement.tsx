@@ -24,6 +24,7 @@ import {
   Clock,
   GraduationCap,
   Camera,
+  ArrowRight,
 } from 'lucide-react';
 import { BulkAmbassadorModal } from './BulkAmbassadorModal';
 import { DIU_DEPARTMENTS, DIU_FACULTIES } from '../../data/departments';
@@ -40,6 +41,7 @@ export const AdminUserManagement: React.FC = () => {
     approveAmbassadorApplication,
     rejectAmbassadorApplication,
     pendingApplicationsCount,
+    refreshFromFirestore,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all');
@@ -47,6 +49,16 @@ export const AdminUserManagement: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState<'All' | UserRole>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive' | 'Pending' | 'Rejected'>('All');
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshFromFirestore();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Modals state
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -75,14 +87,14 @@ export const AdminUserManagement: React.FC = () => {
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [resetSuccessMessage, setResetSuccessMessage] = useState('');
 
-  // Filtered Users
+  // Filtered Users with null-safety
   const filteredUsers = allUsers.filter((u) => {
     const q = searchQuery.toLowerCase();
     const matchesSearch =
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
-      (u.studentId && u.studentId.toLowerCase().includes(q)) ||
-      (u.department && u.department.toLowerCase().includes(q));
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.studentId ? u.studentId.toLowerCase().includes(q) : false) ||
+      (u.department ? u.department.toLowerCase().includes(q) : false);
 
     const matchesRole = roleFilter === 'All' ? true : u.role === roleFilter;
     const matchesStatus = statusFilter === 'All' ? true : (u.status || 'Active') === statusFilter;
@@ -175,6 +187,16 @@ export const AdminUserManagement: React.FC = () => {
     setTimeout(() => setActionFeedback(null), 3500);
   };
 
+  const handleApproveAllPending = () => {
+    if (pendingUsers.length === 0) return;
+    const count = pendingUsers.length;
+    pendingUsers.forEach((u) => {
+      approveAmbassadorApplication(u.id);
+    });
+    setActionFeedback(`Approved all ${count} pending ambassador application(s)! Official IDs generated and access enabled.`);
+    setTimeout(() => setActionFeedback(null), 3500);
+  };
+
   const handleOpenReject = (user: User) => {
     setRejectingUser(user);
     setRejectReason('Does not meet current cohort academic/credit criteria.');
@@ -225,6 +247,16 @@ export const AdminUserManagement: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs transition-colors shrink-0 cursor-pointer disabled:opacity-60"
+            title="Sync latest user records from cloud database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isRefreshing ? 'animate-spin text-[#214FA2]' : ''}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Cloud'}</span>
+          </button>
+
           <button
             onClick={() => setIsBulkModalOpen(true)}
             className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-[#214FA2] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl shadow-2xs transition-colors shrink-0"
@@ -294,6 +326,48 @@ export const AdminUserManagement: React.FC = () => {
         </div>
       </div>
 
+      {/* Pending Applications Alert Banner */}
+      {pendingUsers.length > 0 && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 font-bold text-base shadow-xs">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-amber-900 flex items-center gap-2">
+                <span>{pendingUsers.length} Ambassador Registration{pendingUsers.length > 1 ? 's' : ''} Awaiting Review</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold">Action Needed</span>
+              </div>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                Students have submitted registration forms through the portal. Once approved, their accounts are active and they can log in.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleApproveAllPending}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Approve All ({pendingUsers.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('pending')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'pending'
+                  ? 'bg-amber-700 text-white'
+                  : 'bg-white border border-amber-300 text-amber-900 hover:bg-amber-100'
+              }`}
+            >
+              <span>Review Details</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Primary Tab Switcher */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
         <button
@@ -337,11 +411,23 @@ export const AdminUserManagement: React.FC = () => {
       {activeTab === 'pending' ? (
         // PENDING AMBASSADOR APPLICATIONS REVIEW SECTION
         <div className="space-y-4">
-          <div className="bg-amber-50/70 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
-            <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-amber-900">
-              <span className="font-bold">Ambassador Approval Workflow:</span> Students who register on the public portal must be approved by Centre Administration before they can log in. Upon approval, they receive an official IIC Ambassador ID, their account is activated, and they can immediately set their weekly duty availability schedule.
+          <div className="bg-amber-50/70 border border-amber-200 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-900">
+                <span className="font-bold">Ambassador Approval Workflow:</span> Students who register on the public portal must be approved by Centre Administration before they can log in. Upon approval, they receive an official IIC Ambassador ID, their account is activated, and they can immediately set their weekly duty availability schedule.
+              </div>
             </div>
+            {pendingUsers.length > 0 && (
+              <button
+                type="button"
+                onClick={handleApproveAllPending}
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shrink-0 shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>Approve All ({pendingUsers.length})</span>
+              </button>
+            )}
           </div>
 
           {pendingUsers.length === 0 ? (

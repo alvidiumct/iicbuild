@@ -8,7 +8,7 @@ interface UserSwitchModalProps {
 }
 
 export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({ isOpen, onClose }) => {
-  const { allUsers, currentUser, switchUser, createManualAmbassador, setActiveView, logout } = useApp();
+  const { allUsers, currentUser, switchUser, createManualAmbassador, setActiveView, logout, dispatchNotification } = useApp();
 
   const [activeTab, setActiveTab] = useState<'switch' | 'new-account' | 'forgot-password'>('switch');
 
@@ -44,7 +44,11 @@ export const UserSwitchModal: React.FC<UserSwitchModalProps> = ({ isOpen, onClos
       status: 'Active',
     });
 
-    alert(`Account created for ${newFullName}! Onboarding instructions dispatched to ${newEmail}.`);
+    dispatchNotification({
+      title: 'Account Created',
+      message: `Account created for ${newFullName}! Onboarding instructions dispatched to ${newEmail}.`,
+      type: 'reminder',
+    });
     setNewFullName('');
     setNewEmail('');
     setActiveTab('switch');

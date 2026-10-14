@@ -39,6 +39,7 @@ import {
 } from '../data/mockData';
 import {
   seedFirestoreIfEmpty,
+  installAllFirebaseTables,
   subscribeToUsers,
   subscribeToAmbassadors,
   subscribeToProjects,
@@ -47,6 +48,10 @@ import {
   subscribeToSettings,
   syncUserToFirestore,
   syncAmbassadorToFirestore,
+  syncAmbassadorRegistration,
+  batchSyncAmbassadors,
+  deleteUserFromFirestore,
+  fetchAllCloudData,
   syncAvailabilityToFirestore,
   syncProjectToFirestore,
   syncTaskToFirestore,
@@ -135,7 +140,7 @@ interface AppContextType {
     phone?: string;
     bio?: string;
     skills?: string[];
-  }) => { success: boolean; error?: string; user?: User };
+  }) => Promise<{ success: boolean; error?: string; user?: User }>;
   approveAmbassadorApplication: (userId: string, notes?: string) => void;
   rejectAmbassadorApplication: (userId: string, reason?: string) => void;
   pendingApplicationsCount: number;
@@ -261,6 +266,8 @@ interface AppContextType {
   // Firebase Realtime Cloud Database Sync Status
   firebaseSyncStatus: FirebaseSyncStatus;
   retryFirebaseSync: () => Promise<void>;
+  pushAllDataToFirebase: () => Promise<{ success: boolean; count: number; error?: string }>;
+  refreshFromFirestore: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -433,66 +440,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [activeTimerElapsedSeconds, setActiveTimerElapsedSeconds] = useState<number>(0);
 
-  // Sync to local storage
+  // Safe Local Storage Helper to prevent QuotaExceededError crashes with large avatars
+  const safeSaveLocal = useCallback((key: string, data: any) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (err) {
+      console.warn(`[Storage] localStorage write for "${key}" exceeded quota, applying compression.`, err);
+      try {
+        if (Array.isArray(data)) {
+          const stripped = data.map((item) => {
+            if (item && typeof item === 'object' && item.avatarUrl && item.avatarUrl.length > 500) {
+              return { ...item, avatarUrl: '/src/assets/images/avatar_ambassador_lead_1790178208374.jpg' };
+            }
+            return item;
+          });
+          localStorage.setItem(key, JSON.stringify(stripped));
+        }
+      } catch {
+        // Silent failover to in-memory state if browser sandbox is full
+      }
+    }
+  }, []);
+
+  // Sync to local storage safely
   useEffect(() => {
-    localStorage.setItem('iic_users', JSON.stringify(allUsers));
-  }, [allUsers]);
+    safeSaveLocal('iic_users', allUsers);
+  }, [allUsers, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_ambassadors', JSON.stringify(ambassadors));
-  }, [ambassadors]);
+    safeSaveLocal('iic_ambassadors', ambassadors);
+  }, [ambassadors, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_tasks', JSON.stringify(tasks));
-  }, [tasks]);
+    safeSaveLocal('iic_tasks', tasks);
+  }, [tasks, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_time_entries', JSON.stringify(timeEntries));
-  }, [timeEntries]);
+    safeSaveLocal('iic_time_entries', timeEntries);
+  }, [timeEntries, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_manual_time', JSON.stringify(manualTimeRequests));
-  }, [manualTimeRequests]);
+    safeSaveLocal('iic_manual_time', manualTimeRequests);
+  }, [manualTimeRequests, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_availability', JSON.stringify(availabilityList));
-  }, [availabilityList]);
+    safeSaveLocal('iic_availability', availabilityList);
+  }, [availabilityList, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_projects', JSON.stringify(projects));
-  }, [projects]);
+    safeSaveLocal('iic_projects', projects);
+  }, [projects, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_events', JSON.stringify(events));
-  }, [events]);
+    safeSaveLocal('iic_events', events);
+  }, [events, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_resources', JSON.stringify(resources));
-  }, [resources]);
+    safeSaveLocal('iic_resources', resources);
+  }, [resources, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_announcements', JSON.stringify(announcements));
-  }, [announcements]);
+    safeSaveLocal('iic_announcements', announcements);
+  }, [announcements, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_certificates', JSON.stringify(certificates));
-  }, [certificates]);
+    safeSaveLocal('iic_certificates', certificates);
+  }, [certificates, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_notifications', JSON.stringify(notifications));
-  }, [notifications]);
+    safeSaveLocal('iic_notifications', notifications);
+  }, [notifications, safeSaveLocal]);
 
   useEffect(() => {
-    localStorage.setItem('iic_audit_logs', JSON.stringify(auditLogs));
-  }, [auditLogs]);
+    safeSaveLocal('iic_audit_logs', auditLogs);
+  }, [auditLogs, safeSaveLocal]);
 
   useEffect(() => {
     if (activeTimer) {
-      localStorage.setItem('iic_active_timer', JSON.stringify(activeTimer));
+      safeSaveLocal('iic_active_timer', activeTimer);
     } else {
       localStorage.removeItem('iic_active_timer');
     }
-  }, [activeTimer]);
+  }, [activeTimer, safeSaveLocal]);
 
   // Timer interval calculation
   useEffect(() => {
@@ -556,6 +585,93 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  // Force push all tables & data to Firebase
+  const pushAllDataToFirebase = useCallback(async () => {
+    setFirebaseSyncStatus((prev) => ({ ...prev, isSyncing: true, errorMessage: null }));
+    try {
+      const res = await installAllFirebaseTables({
+        users: allUsers,
+        ambassadors,
+        projects,
+        availability: availabilityList,
+        tasks,
+        settings: logoSettings,
+      });
+
+      if (res.error) {
+        const isPerm = res.error.includes('permission-denied') || res.error.includes('Missing or insufficient permissions');
+        setFirebaseSyncStatus((prev) => ({
+          ...prev,
+          isSyncing: false,
+          errorMessage: isPerm
+            ? 'Firestore permissions pending: please ensure rules allow read/write in Firebase console.'
+            : res.error || null,
+          rulesNeedUpdate: isPerm,
+        }));
+        return res;
+      }
+
+      setFirebaseSyncStatus({
+        connected: true,
+        isSyncing: false,
+        lastSyncedAt: new Date().toISOString(),
+        errorMessage: null,
+        rulesNeedUpdate: false,
+      });
+
+      return res;
+    } catch (e: any) {
+      setFirebaseSyncStatus((prev) => ({
+        ...prev,
+        isSyncing: false,
+        errorMessage: e?.message || 'Push to Firebase failed',
+        rulesNeedUpdate: e?.message?.includes('permission-denied') || false,
+      }));
+      return { success: false, count: 0, error: e?.message };
+    }
+  }, [allUsers, ambassadors, projects, availabilityList, tasks, logoSettings]);
+
+  // Pull latest users and ambassadors directly from Firestore
+  const refreshFromFirestore = useCallback(async () => {
+    setFirebaseSyncStatus((prev) => ({ ...prev, isSyncing: true, errorMessage: null }));
+    try {
+      const data = await fetchAllCloudData();
+      if (data.users.length > 0) {
+        setAllUsers((prev) => {
+          const cloudIds = new Set(data.users.map((u) => u.id));
+          const localOnly = prev.filter((u) => !cloudIds.has(u.id));
+          return [...data.users, ...localOnly];
+        });
+      }
+      if (data.ambassadors.length > 0) {
+        setAmbassadors((prev) => {
+          const cloudIds = new Set(data.ambassadors.map((a) => a.id));
+          const localOnly = prev.filter((a) => !cloudIds.has(a.id));
+          return [...data.ambassadors, ...localOnly];
+        });
+      }
+      if (data.projects.length > 0) setProjects(data.projects);
+      if (data.tasks.length > 0) setTasks(data.tasks);
+      if (data.availability.length > 0) setAvailabilityList(data.availability);
+      if (data.settings) setLogoSettings(data.settings);
+
+      setFirebaseSyncStatus({
+        connected: true,
+        isSyncing: false,
+        lastSyncedAt: new Date().toISOString(),
+        errorMessage: null,
+        rulesNeedUpdate: false,
+      });
+      return;
+    } catch (err: any) {
+      setFirebaseSyncStatus((prev) => ({
+        ...prev,
+        isSyncing: false,
+        errorMessage: err?.message || 'Refresh failed',
+      }));
+    }
+  }, []);
+
   useEffect(() => {
     let unsubs: Array<() => void> = [];
 
@@ -584,11 +700,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }));
         }
 
-        // Setup Realtime onSnapshot Listeners
+        // Setup Realtime onSnapshot Listeners with Cross-Collection Reconciliation
         const unsubUsers = subscribeToUsers(
           (cloudUsers) => {
             if (cloudUsers && cloudUsers.length > 0) {
-              setAllUsers(cloudUsers);
+              setAllUsers((prevUsers) => {
+                const cloudIds = new Set(cloudUsers.map((u) => u.id));
+                const localOnly = prevUsers.filter((u) => !cloudIds.has(u.id));
+                return [...cloudUsers, ...localOnly];
+              });
+
+              // Auto-reconcile ambassadors: ensure any ambassador in cloudUsers is visible & in sync
+              setAmbassadors((prevAmbs) => {
+                const existingUserIds = new Set(prevAmbs.map((a) => a.userId));
+                const existingEmails = new Set(prevAmbs.map((a) => (a.email || '').toLowerCase()));
+
+                const updatedAmbs = prevAmbs.map((a) => {
+                  const cloudUser = cloudUsers.find(
+                    (u) =>
+                      u.id === a.userId ||
+                      (u.email && a.email && u.email.toLowerCase() === a.email.toLowerCase())
+                  );
+                  if (cloudUser) {
+                    return {
+                      ...a,
+                      status: (cloudUser.status as any) || a.status,
+                      fullName: cloudUser.name || a.fullName,
+                      department: cloudUser.department || a.department,
+                      studentId: cloudUser.studentId || a.studentId,
+                    };
+                  }
+                  return a;
+                });
+
+                const missingAmbassadors: AmbassadorProfile[] = [];
+
+                cloudUsers
+                  .filter((u) => u.role === 'AMBASSADOR')
+                  .forEach((u) => {
+                    const uEmail = (u.email || '').toLowerCase();
+                    if (!existingUserIds.has(u.id) && !existingEmails.has(uEmail)) {
+                      missingAmbassadors.push({
+                        id: u.ambassadorId ? `amb-${u.ambassadorId.replace(/[^a-zA-Z0-9]/g, '')}` : `amb-${u.id}`,
+                        userId: u.id,
+                        ambassadorId: u.ambassadorId || `IIC-AMB-${u.id.slice(-4)}`,
+                        fullName: u.name || 'Student Ambassador',
+                        email: u.email || '',
+                        phone: u.phone || '+880 1700-000000',
+                        university: 'Daffodil International University (DIU)',
+                        department: u.department || 'Software Engineering (SWE)',
+                        program: `B.Sc. in ${u.department || 'Software Engineering (SWE)'}`,
+                        studentId: u.studentId || '221-35-000',
+                        batch: u.batch || '61st Batch',
+                        semester: u.semester || '6th Semester',
+                        graduationYear: '2027',
+                        location: 'DIU Smart Campus, Ashulia',
+                        joiningDate: u.registeredAt ? u.registeredAt.split('T')[0] : new Date().toISOString().split('T')[0],
+                        status: (u.status as any) || 'Pending',
+                        avatarUrl:
+                          u.avatarUrl ||
+                          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400',
+                        bio: u.bio || `${u.name} - Student Ambassador at IIC`,
+                        skills: u.skills || ['Innovation', 'Leadership'],
+                        interests: ['Innovation', 'Technology'],
+                        areasOfExpertise: ['Operations'],
+                        group: 'Applicant Wing',
+                        onboardingCompleted: u.status === 'Active',
+                        privacySettings: {
+                          showEmail: true,
+                          showPhone: false,
+                          showSocials: true,
+                          showAvailability: true,
+                          showContributionStats: true,
+                          showProjects: true,
+                          showCertificates: true,
+                        },
+                      });
+                    }
+                  });
+
+                return missingAmbassadors.length > 0 ? [...updatedAmbs, ...missingAmbassadors] : updatedAmbs;
+              });
+
               setFirebaseSyncStatus((prev) => ({
                 ...prev,
                 connected: true,
@@ -606,7 +799,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const unsubAmb = subscribeToAmbassadors((cloudAmbs) => {
           if (cloudAmbs && cloudAmbs.length > 0) {
-            setAmbassadors(cloudAmbs);
+            setAmbassadors((prev) => {
+              const cloudIds = new Set(cloudAmbs.map((a) => a.id));
+              const localOnly = prev.filter((a) => !cloudIds.has(a.id));
+              return [...cloudAmbs, ...localOnly];
+            });
+
+            // Ensure all ambassadors exist in allUsers with their real status (including Pending)
+            setAllUsers((prevUsers) => {
+              const userIds = new Set(prevUsers.map((u) => u.id));
+              const userEmails = new Set(prevUsers.map((u) => (u.email || '').toLowerCase()));
+
+              // Update existing users matching cloudAmbs
+              const updatedUsers = prevUsers.map((u) => {
+                const amb = cloudAmbs.find(
+                  (a) =>
+                    a.userId === u.id ||
+                    (a.email && u.email && a.email.toLowerCase() === u.email.toLowerCase())
+                );
+                if (amb) {
+                  return {
+                    ...u,
+                    status: (amb.status as any) || u.status,
+                    ambassadorId: amb.ambassadorId || u.ambassadorId,
+                    department: amb.department || u.department,
+                    studentId: amb.studentId || u.studentId,
+                  };
+                }
+                return u;
+              });
+
+              const missingUsers: User[] = [];
+
+              cloudAmbs.forEach((amb) => {
+                const aEmail = (amb.email || '').toLowerCase();
+                if (!userIds.has(amb.userId) && !userEmails.has(aEmail)) {
+                  missingUsers.push({
+                    id: amb.userId || `user-${amb.id}`,
+                    name: amb.fullName || 'Ambassador',
+                    email: amb.email || '',
+                    role: 'AMBASSADOR',
+                    status: (amb.status as any) || 'Pending',
+                    ambassadorId: amb.ambassadorId || '',
+                    avatarUrl: amb.avatarUrl,
+                    department: amb.department,
+                    studentId: amb.studentId,
+                    batch: amb.batch,
+                    semester: amb.semester,
+                    phone: amb.phone,
+                    bio: amb.bio,
+                    skills: amb.skills,
+                    createdAt: amb.joiningDate || new Date().toISOString(),
+                  });
+                }
+              });
+
+              return missingUsers.length > 0 ? [...updatedUsers, ...missingUsers] : updatedUsers;
+            });
           }
         });
 
@@ -849,9 +1098,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAmbassadors((prev) =>
         prev.map((amb) => (amb.id === ambassadorId ? { ...amb, status } : amb))
       );
+      const targetAmb = ambassadors.find((a) => a.id === ambassadorId);
+      if (targetAmb) {
+        syncAmbassadorToFirestore({ ...targetAmb, status });
+        setAllUsers((prev) =>
+          prev.map((u) => {
+            if (
+              u.id === targetAmb.userId ||
+              (u.email && targetAmb.email && u.email.toLowerCase() === targetAmb.email.toLowerCase())
+            ) {
+              const updated = { ...u, status: status as any };
+              syncUserToFirestore(updated);
+              return updated;
+            }
+            return u;
+          })
+        );
+      }
       logAudit('Ambassador Status Changed', `Changed status of ambassador ${ambassadorId} to ${status}`);
     },
-    [logAudit]
+    [ambassadors, logAudit]
   );
 
   // Create Manual Ambassador (Admin)
@@ -920,6 +1186,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setAllUsers((prev) => [newUser, ...prev]);
       setAmbassadors((prev) => [...prev, newProfile]);
+      syncUserToFirestore(newUser);
+      syncAmbassadorToFirestore(newProfile);
 
       // Initialize default availability
       const defaultAvailability: AmbassadorAvailability = {
@@ -1105,6 +1373,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAmbassadors((prev) => [...prev, ...newProfiles]);
       setAvailabilityList((prev) => [...prev, ...newAvailabilities]);
 
+      const recordsToSync = newUsers.map((u, i) => ({ user: u, ambassador: newProfiles[i] }));
+      batchSyncAmbassadors(recordsToSync);
+
       logAudit(
         'Bulk Ambassador Onboarding',
         `Enrolled ${createdRecords.length} new ambassadors in bulk table format.`
@@ -1160,6 +1431,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       setAllUsers((prev) => [newUser, ...prev]);
+      syncUserToFirestore(newUser);
 
       if (userData.role === 'AMBASSADOR' && newAmbId && ambIdCode) {
         const newProfile: AmbassadorProfile = {
@@ -1195,6 +1467,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           },
         };
         setAmbassadors((prev) => [...prev, newProfile]);
+        syncAmbassadorToFirestore(newProfile);
 
         const defaultAvailability: AmbassadorAvailability = {
           ambassadorId: newAmbId,
@@ -1225,18 +1498,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (userToDelete.id === currentUser.id) {
         return;
       }
+      const targetAmb = ambassadors.find((a) => a.userId === userId || a.email.toLowerCase() === userToDelete.email.toLowerCase());
       setAllUsers((prev) => prev.filter((u) => u.id !== userId));
-      setAmbassadors((prev) => prev.filter((a) => a.userId !== userId && a.email !== userToDelete.email));
+      setAmbassadors((prev) => prev.filter((a) => a.userId !== userId && a.email.toLowerCase() !== userToDelete.email.toLowerCase()));
+      deleteUserFromFirestore(userId, targetAmb?.id);
       logAudit('User Deleted', `Deleted user account "${userToDelete.name}" (${userToDelete.email})`);
     },
-    [allUsers, currentUser.id, logAudit]
+    [allUsers, ambassadors, currentUser.id, logAudit]
   );
 
   const resetUserPassword = useCallback(
     (userId: string, newPassword?: string): string => {
       const generated = newPassword || `iic#pass${Math.floor(1000 + Math.random() * 9000)}`;
       setAllUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, password: generated } : u))
+        prev.map((u) => {
+          if (u.id === userId) {
+            const updated = { ...u, password: generated };
+            syncUserToFirestore(updated);
+            return updated;
+          }
+          return u;
+        })
       );
       const user = allUsers.find((u) => u.id === userId);
       logAudit('Password Reset', `Password reset for user ${user?.name || userId}`);
@@ -1248,12 +1530,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateUser = useCallback(
     (userId: string, updates: Partial<User>) => {
       setAllUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, ...updates } : u))
+        prev.map((u) => {
+          if (u.id === userId) {
+            const updated = { ...u, ...updates };
+            syncUserToFirestore(updated);
+            return updated;
+          }
+          return u;
+        })
       );
       setAmbassadors((prev) =>
         prev.map((a) => {
-          if (a.userId === userId || a.email === updates.email) {
-            return {
+          if (a.userId === userId || (updates.email && a.email.toLowerCase() === updates.email.toLowerCase())) {
+            const updatedAmb = {
               ...a,
               fullName: updates.name || a.fullName,
               email: updates.email || a.email,
@@ -1264,6 +1553,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               phone: updates.phone || a.phone,
               bio: updates.bio || a.bio,
             };
+            syncAmbassadorToFirestore(updatedAmb);
+            return updatedAmb;
           }
           return a;
         })
@@ -1325,7 +1616,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Ambassador Self-Registration Workflow
   const registerAmbassador = useCallback(
-    (data: {
+    async (data: {
       fullName: string;
       studentId: string;
       batch: string;
@@ -1337,7 +1628,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       phone?: string;
       bio?: string;
       skills?: string[];
-    }): { success: boolean; error?: string; user?: User } => {
+    }): Promise<{ success: boolean; error?: string; user?: User }> => {
       const cleanEmail = data.email.trim().toLowerCase();
       const cleanStudentId = data.studentId.trim();
 
@@ -1431,12 +1722,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
       };
 
+      // Realtime Cloud Sync to Firebase Firestore first
+      const cloudRes = await syncAmbassadorRegistration(newUser, newProfile);
+      if (!cloudRes.success) {
+        console.warn('[Firebase] Warning syncing registration to cloud:', cloudRes.error);
+      }
+
       setAllUsers((prev) => [newUser, ...prev]);
       setAmbassadors((prev) => [...prev, newProfile]);
-
-      // Realtime Cloud Sync to Firebase Firestore
-      syncUserToFirestore(newUser);
-      syncAmbassadorToFirestore(newProfile);
 
       // Dispatch alert to administrators
       dispatchNotification({
@@ -1458,20 +1751,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Admin Approval for Pending Ambassador Applications
   const approveAmbassadorApplication = useCallback(
-    (userId: string, notes?: string) => {
+    (identifier: string, notes?: string) => {
       const activeAmbassadorsCount = ambassadors.filter((a) => a.status === 'Active').length;
       const assignedNum = String(activeAmbassadorsCount + 1).padStart(3, '0');
       const officialAmbassadorId = `IIC-AMB-2026-${assignedNum}`;
 
-      let applicantName = '';
-      let applicantEmail = '';
-      let targetAmbId = '';
+      // Resolve both target user and target ambassador
+      const matchedUser = allUsers.find(
+        (u) =>
+          u.id === identifier ||
+          (u.ambassadorId && u.ambassadorId === identifier) ||
+          (u.email && identifier && u.email.toLowerCase() === identifier.toLowerCase())
+      );
+      const matchedAmb = ambassadors.find(
+        (a) =>
+          a.id === identifier ||
+          a.userId === identifier ||
+          (a.ambassadorId && a.ambassadorId === identifier) ||
+          (matchedUser && (a.userId === matchedUser.id || a.email.toLowerCase() === matchedUser.email.toLowerCase())) ||
+          (a.email && identifier && a.email.toLowerCase() === identifier.toLowerCase())
+      );
+
+      const targetUserId = matchedUser ? matchedUser.id : (matchedAmb?.userId || identifier);
+      const targetAmbId = matchedAmb ? matchedAmb.id : (matchedUser ? `amb-${matchedUser.id}` : identifier);
+      const applicantName = matchedUser?.name || matchedAmb?.fullName || 'Student Ambassador';
+      const applicantEmail = matchedUser?.email || matchedAmb?.email || '';
 
       setAllUsers((prev) =>
         prev.map((u) => {
-          if (u.id === userId) {
-            applicantName = u.name;
-            applicantEmail = u.email;
+          if (u.id === targetUserId || (matchedAmb && u.id === matchedAmb.userId)) {
             return {
               ...u,
               status: 'Active',
@@ -1486,8 +1794,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setAmbassadors((prev) =>
         prev.map((a) => {
-          if (a.userId === userId) {
-            targetAmbId = a.id;
+          if (a.id === targetAmbId || a.userId === targetUserId) {
             return {
               ...a,
               status: 'Active',
@@ -1529,8 +1836,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         type: 'approval',
       });
 
-      // Sync approved user and ambassador profile to Firestore
-      const targetUser = allUsers.find((u) => u.id === userId);
+      // Sync approved user and ambassador profile directly to Firestore
+      const targetUser = allUsers.find((u) => u.id === targetUserId) || matchedUser;
       if (targetUser) {
         syncUserToFirestore({
           ...targetUser,
@@ -1540,7 +1847,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           approvedBy: currentUser.name,
         });
       }
-      const targetAmb = ambassadors.find((a) => a.userId === userId);
+      const targetAmb = ambassadors.find((a) => a.id === targetAmbId || a.userId === targetUserId) || matchedAmb;
       if (targetAmb) {
         syncAmbassadorToFirestore({
           ...targetAmb,
@@ -1556,17 +1863,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }`
       );
     },
-    [ambassadors, currentUser.name, dispatchNotification, logAudit]
+    [allUsers, ambassadors, currentUser.name, dispatchNotification, logAudit]
   );
 
   // Admin Rejection for Pending Applications
   const rejectAmbassadorApplication = useCallback(
-    (userId: string, reason?: string) => {
-      let applicantName = '';
+    (identifier: string, reason?: string) => {
+      const matchedUser = allUsers.find(
+        (u) =>
+          u.id === identifier ||
+          (u.email && identifier && u.email.toLowerCase() === identifier.toLowerCase())
+      );
+      const matchedAmb = ambassadors.find(
+        (a) =>
+          a.id === identifier ||
+          a.userId === identifier ||
+          (matchedUser && (a.userId === matchedUser.id || a.email.toLowerCase() === matchedUser.email.toLowerCase()))
+      );
+
+      const targetUserId = matchedUser ? matchedUser.id : (matchedAmb?.userId || identifier);
+      const targetAmbId = matchedAmb ? matchedAmb.id : identifier;
+      const applicantName = matchedUser?.name || matchedAmb?.fullName || 'Applicant';
+
       setAllUsers((prev) =>
         prev.map((u) => {
-          if (u.id === userId) {
-            applicantName = u.name;
+          if (u.id === targetUserId) {
             return {
               ...u,
               status: 'Rejected',
@@ -1579,7 +1900,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setAmbassadors((prev) =>
         prev.map((a) => {
-          if (a.userId === userId) {
+          if (a.id === targetAmbId || a.userId === targetUserId) {
             return {
               ...a,
               status: 'Rejected',
@@ -1589,12 +1910,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         })
       );
 
-      const rejectedUser = allUsers.find((u) => u.id === userId);
+      const rejectedUser = allUsers.find((u) => u.id === targetUserId) || matchedUser;
       if (rejectedUser) {
         syncUserToFirestore({
           ...rejectedUser,
           status: 'Rejected',
           rejectionReason: reason || 'Cohort criteria not met',
+        });
+      }
+      const rejectedAmb = ambassadors.find((a) => a.id === targetAmbId || a.userId === targetUserId) || matchedAmb;
+      if (rejectedAmb) {
+        syncAmbassadorToFirestore({
+          ...rejectedAmb,
+          status: 'Rejected',
         });
       }
 
@@ -1605,7 +1933,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }`
       );
     },
-    [currentUser.name, logAudit]
+    [allUsers, ambassadors, currentUser.name, logAudit]
   );
 
   const pendingApplicationsCount = allUsers.filter((u) => u.status === 'Pending').length;
@@ -1614,7 +1942,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const punchIn = useCallback(
     (taskId: string): boolean => {
       if (activeTimer) {
-        alert(`You already have an active timer running for "${activeTimer.taskTitle}". Please punch out or pause before starting another.`);
+        dispatchNotification({
+          title: 'Active Timer Running',
+          message: `You already have an active timer running for "${activeTimer.taskTitle}". Please punch out or pause before starting another.`,
+          type: 'reminder',
+        });
         return false;
       }
       const targetTask = tasks.find((t) => t.id === taskId);
@@ -2608,6 +2940,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         firebaseSyncStatus,
         retryFirebaseSync,
+        pushAllDataToFirebase,
+        refreshFromFirestore,
       }}
     >
       {children}

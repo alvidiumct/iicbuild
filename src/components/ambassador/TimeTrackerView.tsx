@@ -32,6 +32,7 @@ export const TimeTrackerView: React.FC = () => {
     getWeeklyMetrics,
     getMonthlyMetrics,
     getOverallMetrics,
+    dispatchNotification,
   } = useApp();
 
   const [selectedTaskIdForTimer, setSelectedTaskIdForTimer] = useState<string>('');
@@ -76,7 +77,11 @@ export const TimeTrackerView: React.FC = () => {
 
   const handleStartTimer = () => {
     if (!selectedTaskIdForTimer) {
-      alert('Please select a task from your assigned list to start punch-in.');
+      dispatchNotification({
+        title: 'Task Selection Required',
+        message: 'Please select an assigned innovation task or project to start your punch-in timer.',
+        type: 'reminder',
+      });
       return;
     }
     punchIn(selectedTaskIdForTimer);

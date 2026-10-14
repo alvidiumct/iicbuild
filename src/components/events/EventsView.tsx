@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export const EventsView: React.FC = () => {
-  const { events, ambassadors, currentUser, currentAmbassador, volunteerForEvent, createEvent } =
+  const { events, ambassadors, currentUser, currentAmbassador, volunteerForEvent, createEvent, dispatchNotification } =
     useApp();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -31,7 +31,11 @@ export const EventsView: React.FC = () => {
 
   const handleVolunteer = (eventId: string) => {
     if (!currentAmbassador) {
-      alert('Only ambassadors can volunteer for events.');
+      dispatchNotification({
+        title: 'Ambassador Role Required',
+        message: 'Only registered student ambassadors can sign up to volunteer for innovation events.',
+        type: 'reminder',
+      });
       return;
     }
     if (volunteerForEvent) {

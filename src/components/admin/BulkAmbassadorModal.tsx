@@ -48,7 +48,7 @@ const DEPARTMENTS = [
 ];
 
 export const BulkAmbassadorModal: React.FC<BulkAmbassadorModalProps> = ({ isOpen, onClose }) => {
-  const { allUsers, bulkCreateAmbassadors, setSelectedAmbassadorId, setActiveView } = useApp();
+  const { allUsers, bulkCreateAmbassadors, setSelectedAmbassadorId, setActiveView, dispatchNotification } = useApp();
 
   const [activeTab, setActiveTab] = useState<'grid' | 'paste'>('grid');
 
@@ -291,7 +291,11 @@ export const BulkAmbassadorModal: React.FC<BulkAmbassadorModalProps> = ({ isOpen
   // Submit bulk creation
   const handleSubmitBulk = () => {
     if (validRows.length === 0) {
-      alert('No valid rows found. Please fill in full name and valid university email for at least one ambassador.');
+      dispatchNotification({
+        title: 'Validation Warning',
+        message: 'No valid rows found. Please fill in full name and valid university email for at least one ambassador.',
+        type: 'reminder',
+      });
       return;
     }
 

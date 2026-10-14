@@ -64,7 +64,7 @@ export const RegisterAmbassadorPage: React.FC = () => {
     appRef: string;
   } | null>(null);
 
-  // Handle Photo File Upload
+  // Handle Photo File Upload with Canvas Compression for Fast Cloud Sync
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -74,8 +74,8 @@ export const RegisterAmbassadorPage: React.FC = () => {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setPhotoError('Image size should be less than 5 MB.');
+    if (file.size > 10 * 1024 * 1024) {
+      setPhotoError('Image size should be less than 10 MB.');
       return;
     }
 
@@ -84,12 +84,76 @@ export const RegisterAmbassadorPage: React.FC = () => {
 
     const reader = new FileReader();
     reader.onload = (uploadEvent) => {
-      const result = uploadEvent.target?.result as string;
-      if (result) {
-        setAvatarUrl(result);
-        setPhotoFileName(file.name);
+      const rawDataUrl = uploadEvent.target?.result as string;
+      if (!rawDataUrl) {
+        setIsUploadingPhoto(false);
+        return;
       }
-      setIsUploadingPhoto(false);
+
+      // Optimize image dimensions and compress to ~20-30KB so it syncs effortlessly to Firestore & Admin Portal
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const maxDimension = 320;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxDimension) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            }
+          } else {
+            if (height > maxDimension) {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            let optimized = canvas.toDataURL('image/jpeg', 0.72);
+            // If still somewhat large, downscale further to 240px
+            if (optimized.length > 80000) {
+              const smCanvas = document.createElement('canvas');
+              const ratio = Math.min(240 / width, 240 / height, 1);
+              smCanvas.width = Math.round(width * ratio);
+              smCanvas.height = Math.round(height * ratio);
+              const smCtx = smCanvas.getContext('2d');
+              if (smCtx) {
+                smCtx.drawImage(canvas, 0, 0, smCanvas.width, smCanvas.height);
+                optimized = smCanvas.toDataURL('image/jpeg', 0.68);
+              }
+            }
+            setAvatarUrl(optimized);
+          } else {
+            setAvatarUrl(
+              rawDataUrl.length > 120000
+                ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400'
+                : rawDataUrl
+            );
+          }
+          setPhotoFileName(file.name);
+        } catch {
+          setAvatarUrl(
+            rawDataUrl.length > 120000
+              ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400'
+              : rawDataUrl
+          );
+          setPhotoFileName(file.name);
+        } finally {
+          setIsUploadingPhoto(false);
+        }
+      };
+      img.onerror = () => {
+        setPhotoError('Could not process selected image. Please try another picture.');
+        setIsUploadingPhoto(false);
+      };
+      img.src = rawDataUrl;
     };
     reader.onerror = () => {
       setPhotoError('Failed to read image file. Please try another picture.');
@@ -107,7 +171,7 @@ export const RegisterAmbassadorPage: React.FC = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -162,8 +226,8 @@ export const RegisterAmbassadorPage: React.FC = () => {
     const formattedBatch = `Batch ${batch.trim()}`;
     const skillsArray = ['Student Ambassador', 'Industrial Innovation'];
 
-    setTimeout(() => {
-      const res = registerAmbassador({
+    try {
+      const res = await registerAmbassador({
         fullName: fullName.trim(),
         studentId: studentId.trim(),
         batch: formattedBatch,
@@ -189,10 +253,13 @@ export const RegisterAmbassadorPage: React.FC = () => {
           semester: semester.trim(),
           avatarUrl,
           email: email.trim().toLowerCase(),
-          appRef: `IIC-APP-${Math.floor(1000 + Math.random() * 9000)}`,
+          appRef: res.user?.ambassadorId || `IIC-APP-${Math.floor(1000 + Math.random() * 9000)}`,
         });
       }
-    }, 500);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setErrorMessage(err?.message || 'Registration failed. Please check your network connection and try again.');
+    }
   };
 
   return (
@@ -338,24 +405,67 @@ export const RegisterAmbassadorPage: React.FC = () => {
           </div>
         ) : (
           // REGISTRATION FORM
-          <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 border border-slate-200/90 text-slate-900">
-            <div className="mb-6 pb-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-                  Register as Student Ambassador
-                </h1>
-                <p className="text-xs text-slate-500 mt-1">
-                  Complete your student profile to apply for the Industrial Innovation Centre Ambassador Cohort
-                </p>
+          <div className="space-y-6">
+            {/* WELCOME MESSAGE HERO BANNER */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#14326b] via-[#214FA2] to-[#0f244d] p-6 sm:p-7 text-white shadow-xl border border-blue-400/30">
+              <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">
+                <Sparkles className="w-40 h-40" />
               </div>
+              <div className="relative z-10 space-y-3">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-xs font-semibold backdrop-blur-xs text-blue-100">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Welcome to DIU Industrial Innovation Centre</span>
+                </div>
 
-              <div className="flex items-center gap-2 self-start md:self-auto">
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#214FA2] text-xs font-semibold">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Admin Approval Required</span>
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-white leading-tight">
+                  Welcome, Future Student Ambassador!
+                </h1>
+
+                <p className="text-xs sm:text-sm text-blue-100/90 max-w-3xl leading-relaxed">
+                  Welcome to the official onboarding portal of the Industrial Innovation Centre (IIC) at Daffodil International University. 
+                  As a Student Ambassador, you will represent cutting-edge research facilities, collaborate with fellow student innovators, 
+                  contribute to flagship initiatives including the <span className="text-amber-300 font-semibold">Beekeeping & Honey Production Project</span>,{' '}
+                  <span className="text-amber-300 font-semibold">ASSET Skill Development Project</span>,{' '}
+                  <span className="text-amber-300 font-semibold">Innovation & Industry Collaboration Projects</span>,{' '}
+                  <span className="text-amber-300 font-semibold">Chanachur Technology Lab</span>, and{' '}
+                  <span className="text-amber-300 font-semibold">Light Engineering Lab</span>, log your 4-hour weekly contribution, and earn an authentic Digital CV.
+                </p>
+
+                <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 backdrop-blur-xs border border-white/10">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
+                    <span>1. Fill Profile &amp; Photo</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 backdrop-blur-xs border border-white/10">
+                    <ShieldCheck className="w-4 h-4 text-blue-200 shrink-0" />
+                    <span>2. Admin Approval</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 backdrop-blur-xs border border-white/10">
+                    <GraduationCap className="w-4 h-4 text-amber-300 shrink-0" />
+                    <span>3. Official ID &amp; Lab Duty</span>
+                  </div>
                 </div>
               </div>
             </div>
+
+            <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 border border-slate-200/90 text-slate-900">
+              <div className="mb-6 pb-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
+                    Register as Student Ambassador
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Complete your student profile to apply for the Industrial Innovation Centre Ambassador Cohort
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#214FA2] text-xs font-semibold">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Admin Approval Required</span>
+                  </div>
+                </div>
+              </div>
 
             {/* Error Banner */}
             {errorMessage && (
@@ -736,7 +846,8 @@ export const RegisterAmbassadorPage: React.FC = () => {
               </div>
             </form>
           </div>
-        )}
+        </div>
+      )}
       </div>
 
       {/* Footer */}

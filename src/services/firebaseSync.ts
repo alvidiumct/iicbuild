@@ -3,6 +3,7 @@ import {
   doc,
   getDocs,
   setDoc,
+  deleteDoc,
   updateDoc,
   onSnapshot,
   writeBatch,
@@ -37,8 +38,107 @@ export interface FirebaseSyncStatus {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Initial Cloud Seeding (Runs once if Firestore collections are empty)
+// 1. Initial Cloud Seeding & Full Table Installation
 // ---------------------------------------------------------------------------
+export async function installAllFirebaseTables(options?: {
+  users?: User[];
+  ambassadors?: AmbassadorProfile[];
+  projects?: IICProject[];
+  availability?: AmbassadorAvailability[];
+  tasks?: Task[];
+  announcements?: Announcement[];
+  settings?: IICLogoSettings;
+}): Promise<{ success: boolean; count: number; error?: string }> {
+  try {
+    console.log('[Firebase] Installing and syncing all tables to iicambasa Firestore...');
+    const batch = writeBatch(db);
+    let count = 0;
+
+    const usersToSync = options?.users || INITIAL_USERS;
+    usersToSync.forEach((u) => {
+      const ref = doc(db, 'users', u.id);
+      batch.set(ref, {
+        ...u,
+        ...(u.role === 'ADMIN' ? { email: 'iicdaffodil@gmail.com', password: 'iic@2026' } : {}),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      count++;
+    });
+
+    const ambassadorsToSync = options?.ambassadors || INITIAL_AMBASSADORS;
+    ambassadorsToSync.forEach((a) => {
+      const ref = doc(db, 'ambassadors', a.id);
+      batch.set(ref, {
+        ...a,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      count++;
+    });
+
+    const projectsToSync = options?.projects || INITIAL_PROJECTS;
+    projectsToSync.forEach((p) => {
+      const ref = doc(db, 'projects', p.id);
+      batch.set(ref, {
+        ...p,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      count++;
+    });
+
+    const availToSync = options?.availability || INITIAL_AVAILABILITY;
+    availToSync.forEach((av) => {
+      const ref = doc(db, 'availability', av.ambassadorId);
+      batch.set(ref, {
+        ...av,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      count++;
+    });
+
+    const tasksToSync = options?.tasks || INITIAL_TASKS;
+    tasksToSync.forEach((t) => {
+      const ref = doc(db, 'tasks', t.id);
+      batch.set(ref, {
+        ...t,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      count++;
+    });
+
+    const announcementsToSync = options?.announcements || INITIAL_ANNOUNCEMENTS;
+    announcementsToSync.forEach((an) => {
+      const ref = doc(db, 'announcements', an.id);
+      batch.set(ref, {
+        ...an,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      count++;
+    });
+
+    const brandingRef = doc(db, 'settings', 'branding');
+    batch.set(brandingRef, {
+      useIICLogo: true,
+      logoUrl: '/src/assets/images/iic_official_logo_1791605685128.jpg',
+      logoType: 'official',
+      displayStyle: 'badge',
+      ...(options?.settings || {}),
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    count++;
+
+    await batch.commit();
+    console.log(`[Firebase] Successfully synced ${count} records across all tables.`);
+    return { success: true, count };
+  } catch (err: any) {
+    console.warn('[Firebase] Full installation error:', err);
+    return {
+      success: false,
+      count: 0,
+      error: err?.message || 'Failed to install tables to Firestore. Check permissions.',
+    };
+  }
+}
+
 export async function seedFirestoreIfEmpty(): Promise<{ seeded: boolean; error?: string }> {
   try {
     const usersCol = collection(db, 'users');
@@ -262,25 +362,179 @@ export function subscribeToSettings(
 // 3. Write / Mutation Helpers
 // ---------------------------------------------------------------------------
 
-export async function syncUserToFirestore(user: User): Promise<void> {
+export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): T {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map((item) => (typeof item === 'object' && item !== null ? sanitizeForFirestore(item) : item)) as unknown as T;
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val === undefined) {
+      continue; // Strip undefined values completely so Firestore write never throws
+    }
+    if (val !== null && typeof val === 'object') {
+      clean[key] = sanitizeForFirestore(val);
+    } else if (typeof val === 'string' && val.length > 200000) {
+      if (key === 'avatarUrl') {
+        clean[key] = '/src/assets/images/avatar_ambassador_lead_1790178208374.jpg';
+      } else {
+        clean[key] = val.slice(0, 200000);
+      }
+    } else {
+      clean[key] = val;
+    }
+  }
+  return clean as T;
+}
+
+export async function syncUserToFirestore(user: User): Promise<{ success: boolean; error?: string }> {
   try {
-    await setDoc(doc(db, 'users', user.id), {
-      ...user,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
-  } catch (err) {
-    console.warn('[Firebase] Failed to write user to Firestore:', err);
+    const sanitized = sanitizeForFirestore(user);
+    await setDoc(
+      doc(db, 'users', sanitized.id),
+      {
+        ...sanitized,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    console.log(`[Firebase] Synced user ${user.name} (${user.id}) to Firestore`);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Firebase] Failed to write user to Firestore:', err);
+    return { success: false, error: err?.message || 'Failed to sync user' };
   }
 }
 
-export async function syncAmbassadorToFirestore(amb: AmbassadorProfile): Promise<void> {
+export async function syncAmbassadorToFirestore(amb: AmbassadorProfile): Promise<{ success: boolean; error?: string }> {
   try {
-    await setDoc(doc(db, 'ambassadors', amb.id), {
-      ...amb,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    const sanitized = sanitizeForFirestore(amb);
+    await setDoc(
+      doc(db, 'ambassadors', sanitized.id),
+      {
+        ...sanitized,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    console.log(`[Firebase] Synced ambassador ${amb.fullName} (${amb.id}) to Firestore`);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Firebase] Failed to write ambassador to Firestore:', err);
+    return { success: false, error: err?.message || 'Failed to sync ambassador' };
+  }
+}
+
+export async function syncAmbassadorRegistration(
+  user: User,
+  ambassador: AmbassadorProfile
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const sanitizedUser = sanitizeForFirestore(user);
+    const sanitizedAmb = sanitizeForFirestore(ambassador);
+    const batch = writeBatch(db);
+
+    batch.set(
+      doc(db, 'users', sanitizedUser.id),
+      {
+        ...sanitizedUser,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+
+    batch.set(
+      doc(db, 'ambassadors', sanitizedAmb.id),
+      {
+        ...sanitizedAmb,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+
+    await batch.commit();
+    console.log(`[Firebase] Successfully synced registration in batch: ${user.name} (${user.id})`);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Firebase] Failed to write ambassador registration in batch:', err);
+    return { success: false, error: err?.message || 'Cloud registration sync failed' };
+  }
+}
+
+export async function batchSyncAmbassadors(
+  records: Array<{ user: User; ambassador: AmbassadorProfile }>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const batch = writeBatch(db);
+    records.forEach(({ user, ambassador }) => {
+      const sanitizedUser = sanitizeForFirestore(user);
+      const sanitizedAmb = sanitizeForFirestore(ambassador);
+      batch.set(
+        doc(db, 'users', sanitizedUser.id),
+        { ...sanitizedUser, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+      batch.set(
+        doc(db, 'ambassadors', sanitizedAmb.id),
+        { ...sanitizedAmb, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+    });
+    await batch.commit();
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Firebase] Failed batchSyncAmbassadors:', err);
+    return { success: false, error: err?.message || 'Batch sync failed' };
+  }
+}
+
+export async function deleteUserFromFirestore(userId: string, ambassadorId?: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'users', userId));
+    if (ambassadorId) {
+      await deleteDoc(doc(db, 'ambassadors', ambassadorId));
+    }
   } catch (err) {
-    console.warn('[Firebase] Failed to write ambassador to Firestore:', err);
+    console.warn('[Firebase] Failed to delete user from Firestore:', err);
+  }
+}
+
+export async function fetchAllCloudData(): Promise<{
+  users: User[];
+  ambassadors: AmbassadorProfile[];
+  projects: IICProject[];
+  tasks: Task[];
+  availability: AmbassadorAvailability[];
+  settings?: IICLogoSettings;
+}> {
+  try {
+    const usersSnap = await getDocs(collection(db, 'users'));
+    const ambsSnap = await getDocs(collection(db, 'ambassadors'));
+    const projSnap = await getDocs(collection(db, 'projects'));
+    const taskSnap = await getDocs(collection(db, 'tasks'));
+    const availSnap = await getDocs(collection(db, 'availability'));
+
+    const users: User[] = [];
+    usersSnap.forEach((d) => users.push({ id: d.id, ...(d.data() as any) }));
+
+    const ambassadors: AmbassadorProfile[] = [];
+    ambsSnap.forEach((d) => ambassadors.push({ id: d.id, ...(d.data() as any) }));
+
+    const projects: IICProject[] = [];
+    projSnap.forEach((d) => projects.push({ id: d.id, ...(d.data() as any) }));
+
+    const tasks: Task[] = [];
+    taskSnap.forEach((d) => tasks.push({ id: d.id, ...(d.data() as any) }));
+
+    const availability: AmbassadorAvailability[] = [];
+    availSnap.forEach((d) => availability.push({ ambassadorId: d.id, ...(d.data() as any) }));
+
+    return { users, ambassadors, projects, tasks, availability };
+  } catch (err) {
+    console.warn('[Firebase] fetchAllCloudData warning:', err);
+    return { users: [], ambassadors: [], projects: [], tasks: [], availability: [] };
   }
 }
 

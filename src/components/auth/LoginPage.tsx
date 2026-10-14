@@ -195,6 +195,7 @@ export const LoginPage: React.FC = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="e.g. iicdaffodil@gmail.com"
+                    style={{ color: '#000000', backgroundColor: '#ffffff' }}
                     className="w-full text-xs pl-9 pr-3 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors text-black font-semibold bg-white placeholder:text-slate-400 placeholder:font-normal"
                   />
                 </div>
@@ -222,6 +223,7 @@ export const LoginPage: React.FC = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your account password"
+                    style={{ color: '#000000', backgroundColor: '#ffffff' }}
                     className="w-full text-xs pl-9 pr-10 py-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] transition-colors text-black font-semibold bg-white placeholder:text-slate-400 placeholder:font-normal"
                   />
                   <button
@@ -363,6 +365,7 @@ export const LoginPage: React.FC = () => {
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
                       placeholder="e.g. iicdaffodil@gmail.com"
+                      style={{ color: '#000000', backgroundColor: '#ffffff' }}
                       className="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#214FA2]/20 focus:border-[#214FA2] text-black font-semibold bg-white placeholder:text-slate-400 placeholder:font-normal"
                     />
                   </div>

@@ -13,6 +13,7 @@ import {
   Play,
   Calendar,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -27,7 +28,20 @@ export const AdminDashboard: React.FC = () => {
     setActiveView,
     setSelectedTaskId,
     auditLogs,
+    pendingApplicationsCount,
+    refreshFromFirestore,
   } = useApp();
+
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshFromFirestore();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Metrics
   const totalAmbassadors = ambassadors.length;
@@ -82,8 +96,17 @@ export const AdminDashboard: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-60"
+            title="Sync latest registrations from cloud database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isRefreshing ? 'animate-spin text-[#214FA2]' : ''}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Cloud'}</span>
+          </button>
+          <button
             onClick={() => setActiveView('admin-tasks')}
-            className="px-3.5 py-2 text-xs font-semibold text-white bg-[#214FA2] hover:bg-[#1a3f85] rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+            className="px-3.5 py-2 text-xs font-semibold text-white bg-[#214FA2] hover:bg-[#1a3f85] rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <CheckSquare className="w-4 h-4" />
             <span>Assign New Task</span>
@@ -96,6 +119,33 @@ export const AdminDashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* PENDING AMBASSADOR REGISTRATIONS ALERT BANNER */}
+      {pendingApplicationsCount > 0 && (
+        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                <span>{pendingApplicationsCount} Pending Ambassador Application{pendingApplicationsCount > 1 ? 's' : ''}</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold">Action Required</span>
+              </div>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                New student ambassadors have registered and are awaiting administrative approval before gaining portal access.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveView('admin-users')}
+            className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+          >
+            <span>Review &amp; Approve ({pendingApplicationsCount})</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* 6 TOP EXECUTIVE KPI CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
